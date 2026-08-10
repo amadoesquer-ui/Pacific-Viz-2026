@@ -1,0 +1,5 @@
+# datos fuente descargados (grandes, no necesarios en el repo)
+ne10.geojson
+*.pyc
+__pycache__/
+.venv/
