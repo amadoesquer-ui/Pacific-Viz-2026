@@ -1,65 +1,67 @@
 # -*- coding: utf-8 -*-
 """
-Prepara las geometrías del prototipo Pacific Strata.
+Prepara las geometrías del prototipo Pacific Strata — VERSIÓN CON EEZ OFICIAL.
 
-Entrada : ne_10m_admin_0_countries.geojson (Natural Earth, dominio público)
-Salida  : web/data/regions.json    (3 subregiones, pseudo-ZEE disueltas)
-          web/data/countries.json  (22 países/territorios, pseudo-ZEE)
-          web/data/land.json       (siluetas de tierra, para orientación)
+Entradas:
+  1) ne_10m_admin_0_countries.geojson   (Natural Earth, dominio público)
+     -> se usa SOLO para land.json (siluetas de tierra firme, sin cambios).
+  2) World_EEZ_v12.geojson              (Marine Regions, CC-BY)
+     -> https://www.marineregions.org/eez.php
+     -> se usa para countries.json y regions.json: ZEE OFICIALES, ya
+        delimitadas entre países vecinos por derecho internacional.
+        Ya NO se generan buffers ni particiones Voronoi.
 
-NOTA: los "blobs" son buffers de ~200 mn alrededor de la tierra firme como
-APROXIMACIÓN visual de la ZEE. Para que no se traslapen, cada buffer se
-recorta con una partición tipo Thiessen/Voronoi (celdas de "costa más
-cercana"): se siembran puntos a lo largo de la costa de cada país, se
-calcula el Voronoi global y cada país se queda solo con la parte de su
-buffer que cae en sus propias celdas — equidistancia, como las ZEE reales.
-En producción se reemplazan por Marine Regions World EEZ v12 (CC-BY),
-disueltos con este mismo pipeline.
+Salida (mismo esquema que la versión anterior, compatible con main.js):
+  web/data/regions.json    (3 subregiones, EEZ disueltas)
+  web/data/countries.json  (22 países/territorios, EEZ oficial)
+  web/data/land.json       (siluetas de tierra, para orientación)
 
-Todo el trabajo se hace en longitudes 0–360 (Pacífico-céntrico) para evitar
-el antimeridiano; al exportar se parte en lon=180 y se vuelve a -180..180,
-como recomienda three-conic-polygon-geometry.
+Campos esperados en World EEZ v12 (ajustar EEZ_ISO_FIELD/EEZ_NAME_FIELD si tu
+descarga trae otros nombres de columna — revisa con:
+  python -c "import json;d=json.load(open('World_EEZ_v12.geojson'));print(d['features'][0]['properties'])"
+):
+  ISO_TER1     -> ISO3 del territorio (ej. "FJI", "PYF", "GUM"...)
+  POL_TYPE     -> tipo de régimen ("200NM", "Joint regime", "Overlapping claim"...)
 
-Uso:  python prepare_geometries.py ruta/al/ne_10m_admin_0_countries.geojson
+Uso:
+  python prepare_geometries_eez.py ne_10m_admin_0_countries.geojson World_EEZ_v12.geojson
 """
 import json
 import sys
 from pathlib import Path
 
-from shapely import STRtree
-from shapely.geometry import (shape, box, mapping, Point, MultiPoint,
-                              MultiPolygon, Polygon)
-from shapely.ops import unary_union, voronoi_diagram
+from shapely.geometry import shape, box, mapping, MultiPolygon, Polygon, Point
+from shapely.ops import unary_union
 from shapely.affinity import translate
 
 # ---------------------------------------------------------------- catálogo
-# 22 PICTs con subregión ONU M49.
+# 22 PICTs con subregión ONU M49. Clave = ISO3 usado en World EEZ v12.
 CATALOG = {
     # --- Melanesia
-    "Fiji":                            ("FJ", "Melanesia"),
-    "Papua New Guinea":                ("PG", "Melanesia"),
-    "Solomon Islands":                 ("SB", "Melanesia"),
-    "Vanuatu":                         ("VU", "Melanesia"),
-    "New Caledonia":                   ("NC", "Melanesia"),
+    "FJI": ("Fiji",                          "Melanesia"),
+    "PNG": ("Papua New Guinea",               "Melanesia"),
+    "SLB": ("Solomon Islands",                "Melanesia"),
+    "VUT": ("Vanuatu",                        "Melanesia"),
+    "NCL": ("New Caledonia",                  "Melanesia"),
     # --- Polinesia
-    "Samoa":                           ("WS", "Polynesia"),
-    "American Samoa":                  ("AS", "Polynesia"),
-    "Tonga":                           ("TO", "Polynesia"),
-    "Tuvalu":                          ("TV", "Polynesia"),
-    "Cook Islands":                    ("CK", "Polynesia"),
-    "Niue":                            ("NU", "Polynesia"),
-    "Tokelau":                         ("TK", "Polynesia"),
-    "Wallis and Futuna":               ("WF", "Polynesia"),
-    "French Polynesia":                ("PF", "Polynesia"),
-    "Pitcairn Islands":                ("PN", "Polynesia"),
+    "WSM": ("Samoa",                          "Polynesia"),
+    "ASM": ("American Samoa",                 "Polynesia"),
+    "TON": ("Tonga",                          "Polynesia"),
+    "TUV": ("Tuvalu",                         "Polynesia"),
+    "COK": ("Cook Islands",                   "Polynesia"),
+    "NIU": ("Niue",                           "Polynesia"),
+    "TKL": ("Tokelau",                        "Polynesia"),
+    "WLF": ("Wallis and Futuna",              "Polynesia"),
+    "PYF": ("French Polynesia",               "Polynesia"),
+    "PCN": ("Pitcairn Islands",               "Polynesia"),
     # --- Micronesia
-    "Federated States of Micronesia":  ("FM", "Micronesia"),
-    "Palau":                           ("PW", "Micronesia"),
-    "Marshall Islands":                ("MH", "Micronesia"),
-    "Kiribati":                        ("KI", "Micronesia"),
-    "Nauru":                           ("NR", "Micronesia"),
-    "Guam":                            ("GU", "Micronesia"),
-    "Northern Mariana Islands":        ("MP", "Micronesia"),
+    "FSM": ("Federated States of Micronesia", "Micronesia"),
+    "PLW": ("Palau",                          "Micronesia"),
+    "MHL": ("Marshall Islands",               "Micronesia"),
+    "KIR": ("Kiribati",                       "Micronesia"),
+    "NRU": ("Nauru",                          "Micronesia"),
+    "GUM": ("Guam",                           "Micronesia"),
+    "MNP": ("Northern Mariana Islands",       "Micronesia"),
 }
 
 NOMBRE_ES = {
@@ -80,16 +82,21 @@ NOMBRE_ES = {
 REGION_ES = {"Melanesia": "Melanesia", "Polynesia": "Polinesia",
              "Micronesia": "Micronesia"}
 
-# Tokelau no existe como feature propio en Natural Earth admin-0:
-# se inyectan sus tres atolones como puntos.
-TOKELAU_ATOLLS = [(-172.500, -8.55), (-171.850, -9.17), (-171.216, -9.38)]
+# Nombre de campo ISO3 en tu descarga de World EEZ v12. Verifica con el
+# comando del docstring; versiones antiguas usaban "ISO_Ter1" o "Iso_Ter1".
+EEZ_ISO_FIELD = "ISO_TER1"
+# Si el territorio no tiene ISO_TER1 (raro) probar con SOVEREIGN/ISO_SOV1.
+EEZ_ISO_FALLBACK = "ISO_SOV1"
 
-BUFFER_DEG = 3.2      # ~200 mn en el ecuador: pseudo-ZEE
-VOR_STEP = 0.5        # paso (°) entre puntos semilla a lo largo de la costa
-SIMPLIFY_COUNTRY = 0.18
-SIMPLIFY_REGION = 0.25
+# Regímenes que NO queremos (aguas en disputa activa, evitar problemas
+# geopolíticos en una viz pública). "Joint regime" se conserva porque
+# corresponde a acuerdos formales entre las partes.
+EXCLUDE_POL_TYPES = {"Overlapping claim"}
+
+SIMPLIFY_COUNTRY = 0.08   # EEZ oficial ya es más "limpio": simplificar menos
+SIMPLIFY_REGION = 0.12
 SIMPLIFY_LAND = 0.03
-ROUND = 3             # decimales en la salida
+ROUND = 3
 
 
 # ---------------------------------------------------------------- helpers
@@ -106,10 +113,7 @@ def to_pacific(geom):
 
 
 def only_polygons(geom):
-    """Descarta restos LineString/Point que deja la intersección."""
-    if geom.geom_type == "Polygon":
-        return geom
-    if geom.geom_type == "MultiPolygon":
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
         return geom
     if geom.geom_type == "GeometryCollection":
         polys = [g for g in geom.geoms
@@ -119,7 +123,6 @@ def only_polygons(geom):
 
 
 def split_antimeridian(geom):
-    """Parte una geometría 0–360 en lon=180 y devuelve lon estándar -180..180."""
     west = only_polygons(geom.intersection(box(0, -90, 180, 90)))
     east = only_polygons(geom.intersection(box(180, -90, 360, 90)))
     parts = []
@@ -128,45 +131,6 @@ def split_antimeridian(geom):
     if not east.is_empty:
         parts.append(translate(east, xoff=-360))
     return only_polygons(unary_union(parts))
-
-
-def seed_points(geom, step=VOR_STEP):
-    """Puntos semilla a lo largo del contorno de la tierra, para el Voronoi."""
-    pts = []
-    boundary = geom.boundary
-    lines = getattr(boundary, "geoms", [boundary])
-    for ln in lines:
-        if ln.is_empty or ln.length == 0:
-            continue
-        n = max(4, int(ln.length / step))
-        for k in range(n):
-            p = ln.interpolate(k / n, normalized=True)
-            pts.append(Point(p.x, p.y))
-    if not pts:
-        pts.append(geom.representative_point())
-    return pts
-
-
-def thiessen_territories(land_by_country):
-    """Partición del océano por "costa más cercana" (celdas de Voronoi
-    sembradas en las costas, unidas por país). Cada punto del mar pertenece
-    a UN solo país, así los buffers recortados nunca se traslapan."""
-    seeds, owners = [], []
-    for name, land in land_by_country.items():
-        for p in seed_points(land):
-            seeds.append(p)
-            owners.append(name)
-    minx, miny, maxx, maxy = unary_union(seeds).bounds
-    pad = BUFFER_DEG + 5
-    env = box(minx - pad, miny - pad, maxx + pad, maxy + pad)
-    cells = voronoi_diagram(MultiPoint(seeds), envelope=env)
-    tree = STRtree(seeds)
-    by_country = {name: [] for name in land_by_country}
-    for cell in cells.geoms:
-        # todo punto de una celda tiene como semilla más cercana la propia
-        owner = owners[tree.nearest(cell.representative_point())]
-        by_country[owner].append(cell)
-    return {name: unary_union(cs) for name, cs in by_country.items()}
 
 
 def rounded(geom, nd=ROUND):
@@ -191,62 +155,94 @@ def save(path, features):
 
 
 # ---------------------------------------------------------------- pipeline
-def main(src):
+def load_eez_by_iso(eez_path):
+    """Lee World EEZ v12 y agrupa (disuelve) geometría por ISO3, ya en
+    coordenadas 0-360 para evitar el antimeridiano."""
+    raw = json.loads(Path(eez_path).read_text(encoding="utf-8"))
+    by_iso = {}
+    skipped_pol_types = set()
+
+    for f in raw["features"]:
+        p = f["properties"]
+        pol_type = p.get("POL_TYPE") or p.get("Pol_type") or ""
+        if pol_type in EXCLUDE_POL_TYPES:
+            skipped_pol_types.add(pol_type)
+            continue
+
+        iso = p.get(EEZ_ISO_FIELD) or p.get(EEZ_ISO_FIELD.title()) \
+              or p.get(EEZ_ISO_FALLBACK) or p.get(EEZ_ISO_FALLBACK.title())
+        if iso not in CATALOG:
+            continue
+
+        geom = to_pacific(shape(f["geometry"]))
+        by_iso.setdefault(iso, []).append(geom)
+
+    if skipped_pol_types:
+        print(f"  (omitidos por régimen en disputa: {skipped_pol_types})")
+
+    return {iso: unary_union(geoms) for iso, geoms in by_iso.items()}
+
+
+def main(land_src, eez_src):
     out = Path(__file__).resolve().parent.parent / "web" / "data"
     out.mkdir(parents=True, exist_ok=True)
 
-    raw = json.loads(Path(src).read_text(encoding="utf-8"))
-    land_by_country = {}
-    for f in raw["features"]:
+    # --- land.json: sin cambios, geometría real sin buffer ---
+    raw_land = json.loads(Path(land_src).read_text(encoding="utf-8"))
+    land_by_iso3_ne = {}
+    # Natural Earth usa nombres en inglés; mapeamos vía el CATALOG (nombre->iso)
+    name_to_iso = {name: iso for iso, (name, _) in CATALOG.items()}
+    for f in raw_land["features"]:
         p = f["properties"]
         name = p.get("NAME_EN") or p.get("NAME")
-        if name in CATALOG:
-            land_by_country[name] = to_pacific(shape(f["geometry"]))
+        if name in name_to_iso:
+            land_by_iso3_ne[name_to_iso[name]] = to_pacific(shape(f["geometry"]))
 
-    # Tokelau sintético (tres atolones puntuales, radio nominal de tierra)
-    tk = unary_union([Point(((x + 360) if x < 0 else x), y).buffer(0.05)
-                      for x, y in TOKELAU_ATOLLS])
-    land_by_country["Tokelau"] = tk
+    # Tokelau sintético para land.json (no existe como feature en NE)
+    TOKELAU_ATOLLS = [(-172.500, -8.55), (-171.850, -9.17), (-171.216, -9.38)]
+    land_by_iso3_ne["TKL"] = unary_union(
+        [Point(((x + 360) if x < 0 else x), y).buffer(0.05)
+         for x, y in TOKELAU_ATOLLS])
 
-    missing = set(CATALOG) - set(land_by_country)
-    if missing:
-        sys.exit(f"Faltan geometrías para: {missing}")
+    missing_land = set(CATALOG) - set(land_by_iso3_ne)
+    if missing_land:
+        print(f"  AVISO: sin silueta de tierra para {missing_land} "
+              f"(revisar nombres NAME_EN en {land_src})")
 
-    print("Partición tipo Thiessen (Voronoi de costas)…")
-    territory = thiessen_territories(land_by_country)
+    # --- countries.json / regions.json: EEZ oficial, sin buffer ---
+    print("Leyendo World EEZ v12…")
+    eez_by_iso = load_eez_by_iso(eez_src)
 
-    print("Generando pseudo-ZEE por país (buffer recortado al territorio Voronoi)…")
+    missing_eez = set(CATALOG) - set(eez_by_iso)
+    if missing_eez:
+        sys.exit(f"Faltan EEZ oficiales para: {missing_eez}\n"
+                  f"Revisa el campo ISO en tu descarga (EEZ_ISO_FIELD="
+                  f"'{EEZ_ISO_FIELD}') con:\n"
+                  f"  python -c \"import json;d=json.load(open('{eez_src}'));"
+                  f"print(d['features'][0]['properties'])\"")
+
     country_feats, land_feats = [], []
     zones_by_region = {"Melanesia": [], "Polynesia": [], "Micronesia": []}
-    territory_by_region = {"Melanesia": [], "Polynesia": [], "Micronesia": []}
 
-    for name, (iso, region) in CATALOG.items():
-        land = land_by_country[name]
-        blob = land.buffer(BUFFER_DEG, quad_segs=4) \
-                   .simplify(SIMPLIFY_COUNTRY, preserve_topology=True)
-        # sin traslapes: cada país conserva solo la parte de su buffer que
-        # cae en sus propias celdas (equidistancia entre costas)
-        zone = only_polygons(blob.intersection(territory[name]))
+    for iso, (name, region) in CATALOG.items():
+        zone = eez_by_iso[iso].simplify(SIMPLIFY_COUNTRY, preserve_topology=True)
         zones_by_region[region].append(zone)
-        territory_by_region[region].append(territory[name])
         country_feats.append(feature(
             split_antimeridian(zone),
             {"id": iso, "name": NOMBRE_ES[name], "region": region}))
-        land_simple = land.simplify(SIMPLIFY_LAND, preserve_topology=True)
-        if not land_simple.is_empty:
-            land_feats.append(feature(split_antimeridian(land_simple),
-                                      {"id": iso}))
 
-    print("Disolviendo subregiones…")
+        land = land_by_iso3_ne.get(iso)
+        if land is not None:
+            land_simple = land.simplify(SIMPLIFY_LAND, preserve_topology=True)
+            if not land_simple.is_empty:
+                land_feats.append(feature(split_antimeridian(land_simple),
+                                          {"id": iso}))
+
+    print("Disolviendo subregiones (EEZ oficiales, sin cierre morfológico)…")
     region_feats = []
     for region, zones in zones_by_region.items():
-        merged = unary_union(zones) \
-            .buffer(0.4, quad_segs=2).buffer(-0.4, quad_segs=2) \
-            .simplify(SIMPLIFY_REGION, preserve_topology=True)
-        # el cierre morfológico puede invadir territorio ajeno:
-        # recortar al territorio Voronoi de la propia subregión
-        merged = only_polygons(
-            merged.intersection(unary_union(territory_by_region[region])))
+        merged = unary_union(zones).simplify(SIMPLIFY_REGION,
+                                              preserve_topology=True)
         region_feats.append(feature(
             split_antimeridian(merged),
             {"id": region, "name": REGION_ES[region]}))
@@ -259,6 +255,7 @@ def main(src):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("Uso: python prepare_geometries.py ne_10m_admin_0_countries.geojson")
-    main(sys.argv[1])
+    if len(sys.argv) != 3:
+        sys.exit("Uso: python prepare_geometries_eez.py "
+                  "ne_10m_admin_0_countries.geojson World_EEZ_v12.geojson")
+    main(sys.argv[1], sys.argv[2])

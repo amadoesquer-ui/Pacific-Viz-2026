@@ -3,3 +3,4 @@ ne10.geojson
 *.pyc
 __pycache__/
 .venv/
+node_modules/

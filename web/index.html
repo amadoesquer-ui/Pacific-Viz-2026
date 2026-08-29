@@ -1,238 +1,758 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pacific Strata — prototipo</title>
+<title>Pacific Strata — Prototipo Interactivo 3D</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
 <style>
+  /* =========================================================
+     VARIABLES Y TEMAS
+     ========================================================= */
   :root {
     --abyss: #060d18;
     --ocean: #0e2036;
-    --panel: rgba(10, 20, 34, 0.88);
+    --space: #060d18;
+    --panel: rgba(10, 20, 34, 0.85);
+    --panel-border: rgba(140, 185, 230, 0.16);
     --line: rgba(140, 185, 230, 0.14);
     --ink: #e9f1f7;
     --ink-dim: #8aa2b8;
     --lagoon: #56d6c2;
     --sand: #f2d98d;
+    --scroll-track: rgba(255, 255, 255, 0.05);
+    --active-bg: rgba(86, 214, 194, 0.14);
+    --hover-bg: rgba(86, 214, 194, 0.08);
+    --shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
+
     --ui: "Archivo", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
   }
-  * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; }
+
+  [data-theme="light"] {
+    --abyss: #edf4f6;
+    --ocean: #b0d4e3;
+    --space: #edf4f6;
+    --panel: rgba(255, 255, 255, 0.88);
+    --panel-border: rgba(30, 70, 85, 0.18);
+    --line: rgba(30, 70, 85, 0.14);
+    --ink: #17313b;
+    --ink-dim: #506974;
+    --lagoon: #168f83;
+    --sand: #98731d;
+    --scroll-track: rgba(30, 70, 85, 0.08);
+    --active-bg: rgba(22, 143, 131, 0.12);
+    --hover-bg: rgba(22, 143, 131, 0.06);
+    --shadow: 0 16px 32px rgba(23, 49, 59, 0.12);
+  }
+
+  /* =========================================================
+     BASE & RESET
+     ========================================================= */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; width: 100%; }
   body {
     background: var(--abyss);
     color: var(--ink);
     font-family: var(--ui);
     overflow: hidden;
+    user-select: none;
+    transition: background-color .3s ease, color .3s ease;
   }
-  #scene { position: fixed; inset: 0; display: block; }
 
-  /* ------- marca + miga ------- */
+  #scene {
+    position: fixed;
+    inset: 0;
+    display: block;
+    background-color: var(--space);
+    transition: background-color .3s ease;
+  }
+
+  /* =========================================================
+     HEADER & BARRA SUPERIOR
+     ========================================================= */
   header {
-    position: fixed; top: 18px; left: 22px; z-index: 5;
+    position: fixed;
+    top: 18px;
+    left: 20px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     pointer-events: none;
   }
+
   .wordmark {
-    font-weight: 800; letter-spacing: 0.34em; font-size: 13px;
-    text-transform: uppercase; color: var(--ink);
+    font-weight: 800;
+    letter-spacing: 0.3em;
+    font-size: 14px;
+    text-transform: uppercase;
+    color: var(--ink);
   }
   .wordmark span { color: var(--lagoon); }
+
   .crumb {
-    margin-top: 6px; font-family: var(--mono); font-size: 11px;
-    color: var(--ink-dim); pointer-events: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+    pointer-events: auto;
   }
   .crumb button {
-    all: unset; cursor: pointer; color: var(--lagoon);
+    all: unset;
+    cursor: pointer;
+    color: var(--lagoon);
+    font-weight: 500;
   }
-  .crumb button:hover, .crumb button:focus-visible { text-decoration: underline; }
-  .crumb button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  .crumb button:hover { text-decoration: underline; }
 
-  /* ------- columna izquierda: storytelling + controles ------- */
-  .left-col {
-    position: fixed; left: 22px; top: 86px; bottom: 20px; z-index: 5;
-    width: 300px; display: flex; flex-direction: column; gap: 12px;
+  /* =========================================================
+     PANEL PRINCIPAL UNIFICADO POR PESTAÑAS (IZQUIERDA)
+     ========================================================= */
+  .main-panel {
+    position: fixed;
+    left: 20px;
+    top: 76px;
+    bottom: 20px;
+    width: 340px;
+    height: fit-content;
+    max-height: calc(100vh - 96px);
+    z-index: 10;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background .3s ease, border-color .3s ease;
   }
-  .story {
-    flex: 1 1 auto; min-height: 0; overflow-y: auto;
-    padding: 14px 16px; border: 1px solid var(--line);
-    background: var(--panel); backdrop-filter: blur(6px);
+
+  .tab-nav {
+    display: flex;
+    background: rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--line);
+    padding: 4px;
+    gap: 4px;
+    flex-shrink: 0;
   }
-  .story h2 {
-    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
-    color: var(--lagoon); margin-bottom: 10px;
+
+  .tab-btn {
+    all: unset;
+    flex: 1;
+    text-align: center;
+    padding: 8px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--ink-dim);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .2s ease;
   }
-  .story p {
-    font-size: 12px; line-height: 1.6; color: var(--ink-dim);
-    margin-bottom: 10px;
+  .tab-btn:hover { color: var(--ink); background: var(--hover-bg); }
+  .tab-btn.active {
+    color: var(--lagoon);
+    background: var(--panel);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   }
-  .controls {
-    display: flex; flex-direction: column; gap: 12px;
-    padding: 14px 16px; border: 1px solid var(--line);
-    background: var(--panel); backdrop-filter: blur(6px);
+
+  .tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
-  .controls label.head {
-    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+  .tab-content::-webkit-scrollbar { width: 4px; }
+  .tab-content::-webkit-scrollbar-thumb { background: var(--lagoon); border-radius: 2px; }
+  .tab-content::-webkit-scrollbar-track { background: var(--scroll-track); }
+
+  .tab-pane { display: none; }
+  .tab-pane.active { display: flex; flex-direction: column; gap: 14px; }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .head {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
     color: var(--ink-dim);
   }
-  .seg { display: flex; border: 1px solid var(--line); }
+
+  /* =========================================================
+     CARRUSEL DE INDICADORES
+     ========================================================= */
+  .carousel-wrapper {
+    position: relative;
+    width: 100%;
+    margin-top: 4px;
+    overflow: hidden;
+  }
+
+  .carousel-container {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    gap: 0;
+    padding: 0;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    width: 100%;
+  }
+  .carousel-container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .carousel-card {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    scroll-snap-align: start;
+    background: rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .carousel-nav-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+  }
+
+  .carousel-arrows {
+    display: flex;
+    gap: 4px;
+  }
+
+  .carousel-arrow {
+    all: unset;
+    cursor: pointer;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--line);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: bold;
+    transition: background 0.2s;
+  }
+  .carousel-arrow:hover {
+    background: var(--lagoon);
+    color: #000;
+  }
+
+  .carousel-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ink-dim);
+    opacity: 0.4;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .dot.active {
+    opacity: 1;
+    background: var(--lagoon);
+    transform: scale(1.3);
+  }
+
+  .seg {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+
   .seg button {
-    all: unset; cursor: pointer; flex: 1; text-align: center;
-    padding: 7px 10px; font-size: 12px; font-weight: 500; color: var(--ink-dim);
+    all: unset;
+    box-sizing: border-box;
+    width: 100%;
+    text-align: center;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-dim);
+    background: var(--line);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .2s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .seg button[aria-pressed="true"] { background: rgba(86,214,194,.12); color: var(--lagoon); }
-  .seg button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
+  .seg button:hover {
+    background: var(--hover-bg);
+    color: var(--ink);
+  }
+  .seg button[aria-pressed="true"],
+  .seg button.active {
+    background: var(--panel);
+    color: var(--lagoon);
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    border: 1px solid var(--lagoon);
+  }
 
-  .slider-row { display: flex; align-items: center; gap: 10px; }
-  .slider-row input[type="range"] { flex: 1; accent-color: var(--lagoon); }
-  .slider-row .val { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); width: 6ch; }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    accent-color: var(--lagoon);
+    cursor: pointer;
+  }
+  .slider-row .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+    width: 6ch;
+    text-align: right;
+  }
 
-  .legend { display: flex; flex-direction: column; gap: 4px; }
-  .ramp { height: 8px; border: 1px solid var(--line); }
+  .ramp { height: 8px; border-radius: 4px; border: 1px solid var(--line); }
   .ramp-labels {
-    display: flex; justify-content: space-between;
-    font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-dim);
   }
 
-  /* ------- panel de lectura ------- */
-  #panel {
-    position: fixed; top: 18px; right: 22px; z-index: 5;
-    width: 292px; padding: 16px 18px 18px;
-    border: 1px solid var(--line); background: var(--panel);
-    backdrop-filter: blur(6px);
-    transform: translateX(16px); opacity: 0; pointer-events: none;
-    transition: transform .25s ease, opacity .25s ease;
+  .story-text {
+    font-size: 12px;
+    line-height: 1.65;
+    color: var(--ink-dim);
   }
-  #panel.open { transform: none; opacity: 1; pointer-events: auto; }
-  #panel .region-tag {
-    font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
-    text-transform: uppercase; color: var(--lagoon);
+  .story-text p { margin-bottom: 10px; }
+
+  /* COMPATIBILIDAD CON MAIN.JS PARA SELECCIÓN */
+  #panel { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+  #panel-empty {
+    font-size: 12px;
+    color: var(--ink-dim);
+    text-align: center;
+    padding: 30px 10px;
+    line-height: 1.5;
   }
-  #panel h2 { font-size: 20px; font-weight: 700; margin: 4px 0 12px; }
-  .readout { font-family: var(--mono); font-size: 12px; }
-  .readout .row {
-    display: flex; justify-content: space-between; gap: 8px;
-    padding: 4px 0; border-top: 1px dashed var(--line);
+
+  .region-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--lagoon);
   }
-  .readout .row .y { color: var(--ink-dim); }
-  .stripes { display: flex; height: 26px; margin: 12px 0 4px; border: 1px solid var(--line); }
+
+  #p-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .stripes {
+    display: flex;
+    height: 20px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
   .stripes div { flex: 1; }
-  .note { font-size: 10.5px; color: var(--ink-dim); margin-top: 10px; line-height: 1.45; }
-  #panel .drill {
-    all: unset; cursor: pointer; display: block; margin-top: 14px;
-    padding: 8px 0; text-align: center; width: 100%;
-    border: 1px solid var(--lagoon); color: var(--lagoon);
-    font-size: 12px; font-weight: 500; letter-spacing: .06em;
-  }
-  #panel .drill:hover { background: rgba(86,214,194,.1); }
-  #panel .drill:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
-  .hint {
-    position: fixed; right: 22px; bottom: 20px; z-index: 4;
-    font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim);
-    text-align: right; line-height: 1.6; pointer-events: none;
+  .readout {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
   }
-  .north {
-    all: unset; cursor: pointer; position: fixed; right: 22px; bottom: 64px;
-    z-index: 5; padding: 7px 14px; border: 1px solid var(--lagoon);
-    color: var(--lagoon); background: var(--panel); backdrop-filter: blur(6px);
-    font-size: 11.5px; font-weight: 500; letter-spacing: .06em;
+
+  .drill {
+    all: unset;
+    cursor: pointer;
+    padding: 9px 0;
+    text-align: center;
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid var(--lagoon);
+    color: var(--lagoon);
+    font-size: 11.5px;
+    font-weight: 600;
+    transition: background .2s ease;
   }
-  .north:hover { background: rgba(86,214,194,.12); }
-  .north:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  .drill:hover { background: var(--hover-bg); }
+
+  /* =========================================================
+     BARRA DE HERRAMIENTAS Y BOTONES FLOTANTES (SELECTOR IDIOMA)
+     ========================================================= */
+  .top-tools {
+    position: fixed;
+    top: 18px;
+    right: 20px;
+    z-index: 20;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .lang-select {
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    color: var(--ink);
+    font-family: var(--ui);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    outline: none;
+    box-shadow: var(--shadow);
+    transition: all .2s ease;
+  }
+  .lang-select:hover {
+    border-color: var(--lagoon);
+    color: var(--lagoon);
+  }
+  .lang-select option {
+    background: var(--abyss);
+    color: var(--ink);
+  }
+
+  .icon-btn {
+    all: unset;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    box-shadow: var(--shadow);
+    transition: all .2s ease;
+  }
+  .icon-btn.square {
+    width: 36px;
+    padding: 0;
+    font-size: 14px;
+  }
+  .icon-btn:hover {
+    border-color: var(--lagoon);
+    color: var(--lagoon);
+    transform: translateY(-2px);
+  }
+
+  /* GUÍA DESPLEGABLE */
+  .interaction-guide-dropdown { position: relative; }
+  .interaction-guide-dropdown details summary {
+    list-style: none;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .interaction-guide-dropdown details summary::-webkit-details-marker { display: none; }
+  .interaction-guide-dropdown details summary::after {
+    content: "▲";
+    font-size: 8px;
+    transition: transform 0.2s ease;
+  }
+  .interaction-guide-dropdown details[open] summary::after { transform: rotate(180deg); }
+
+  .guide-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 280px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .guide-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    text-align: left;
+  }
+  .guide-table th, .guide-table td {
+    padding: 6px 10px;
+    border-top: 1px solid var(--line);
+  }
+  .guide-table th {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    background: rgba(0, 0, 0, 0.06);
+  }
+  .guide-table td:first-child { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .guide-table td:last-child { color: var(--ink-dim); line-height: 1.3; }
 
   .syn-badge {
-    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-    z-index: 4; font-family: var(--mono); font-size: 10px;
-    color: var(--sand); border: 1px dashed rgba(242,217,141,.4);
-    padding: 3px 10px; pointer-events: none;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--sand);
+    border: 1px dashed rgba(242,217,141,.4);
+    padding: 3px 10px;
+    border-radius: 20px;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.2);
   }
 
-  @media (max-width: 720px) {
-    header { left: 14px; top: 12px; }
-    .left-col { left: 10px; right: 10px; bottom: 10px; top: auto; width: auto; }
-    .story { display: none; }
-    .controls { flex-direction: row; flex-wrap: wrap; align-items: center; }
-    .controls > div { flex: 1 1 40%; }
-    #panel { top: auto; bottom: 86px; right: 10px; left: 10px; width: auto; }
-    .north { bottom: auto; top: 12px; right: 10px; }
-    .hint, .syn-badge { display: none; }
+  /* EFECTOS HOVER */
+  #p-stripes > div { transition: transform 0.15s ease, opacity 0.15s ease, outline 0.15s ease; cursor: pointer; }
+  #p-stripes > div.active { transform: scaleY(1.35) scaleX(1.15); outline: 2px solid var(--lagoon); z-index: 10; box-shadow: 0 0 8px rgba(86, 214, 194, 0.6); }
+  #p-stripes.has-active > div:not(.active) { opacity: 0.4; }
+
+  #p-readout .row {
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px dashed var(--line);
+    transition: background-color 0.2s ease, color 0.2s ease, padding-left 0.2s ease;
   }
-  @media (prefers-reduced-motion: reduce) {
-    #panel { transition: none; }
+  #p-readout .row .y { color: var(--ink-dim); }
+  #p-readout .row:hover, #p-readout .row.active { background-color: var(--hover-bg); color: var(--lagoon); font-weight: bold; padding-left: 16px; }
+  #p-readout .row:hover .y, #p-readout .row.active .y { color: var(--lagoon); font-weight: 700; }
+
+  @media (max-width: 768px) {
+    header { top: 14px; left: 14px; }
+    .top-tools { top: 14px; right: 14px; }
+    .main-panel { left: 10px; right: 10px; bottom: 10px; top: auto; width: auto; height: 48vh; border-radius: 16px; }
+    .syn-badge { display: none; }
   }
 </style>
 </head>
-<body>
-<canvas id="scene" aria-label="Globo 3D del Pacífico con volúmenes climáticos por región"></canvas>
 
+<body>
+
+<canvas id="scene" aria-label="Globo 3D interactivo"></canvas>
+
+<!-- CABECERA -->
 <header>
   <div class="wordmark">Pacific <span>Strata</span></div>
-  <nav class="crumb" id="crumb" aria-label="Nivel de navegación">Pacífico · subregiones</nav>
+  <nav class="crumb" id="crumb" aria-label="Nivel de navegación" data-i18n="crumb">Pacífico · subregiones</nav>
 </header>
 
-<div class="left-col">
-  <aside class="story" aria-label="Narrativa">
-    <h2>Historia</h2>
-    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean commodo
-       ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis
-       dis parturient montes, nascetur ridiculus mus.</p>
-    <p>Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem.
-       Nulla consequat massa quis enim. Donec pede justo, fringilla vel,
-       aliquet nec, vulputate eget, arcu.</p>
-    <p>In enim justo, rhoncus ut, imperdiet a, venenatis vitae, justo. Nullam
-       dictum felis eu pede mollis pretium. Integer tincidunt. Cras dapibus.
-       Vivamus elementum semper nisi.</p>
-    <p>Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu,
-       consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in,
-       viverra quis, feugiat a, tellus.</p>
-  </aside>
+<!-- HERRAMIENTAS SUPERIORES -->
+<div class="top-tools">
+  <!-- SELECTOR DE IDIOMA -->
+  <select id="lang-select" class="lang-select" aria-label="Seleccionar idioma">
+    <option value="es">ES</option>
+    <option value="en">EN</option>
+    <option value="fr">FR</option>
+  </select>
 
-  <div class="controls" role="group" aria-label="Controles de visualización">
-    <div>
-      <label class="head" for="seg-ind">Indicador</label>
-      <div class="seg" id="seg-ind" role="group"></div>
-    </div>
-    <div>
-      <label class="head" for="sep">Separación de estratos</label>
-      <div class="slider-row">
-        <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
-        <span class="val" id="sep-val">10 %</span>
+  <div class="interaction-guide-dropdown">
+    <details>
+      <summary class="icon-btn" data-i18n="guide_btn">Guía de visualización</summary>
+      <div class="guide-popover">
+        <table class="guide-table">
+          <thead>
+            <tr>
+              <th data-i18n="th_action">Acción</th>
+              <th data-i18n="th_effect">Efecto</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td data-i18n="act_drag">Arrastrar</td>
+              <td data-i18n="eff_drag">Girar el globo libremente sobre su centro</td>
+            </tr>
+            <tr>
+              <td data-i18n="act_north">«⊕ alinear norte»</td>
+              <td data-i18n="eff_north">Enderezar el eje norte-sur con animación</td>
+            </tr>
+            <tr>
+              <td data-i18n="act_click_center">Clic central / 2 dedos</td>
+              <td data-i18n="eff_click_center">Mover el globo (X/Y/Z)</td>
+            </tr>
+            <tr>
+              <td data-i18n="act_wheel">Rueda</td>
+              <td data-i18n="eff_wheel">Acercar y alejar</td>
+            </tr>
+            <tr>
+              <td data-i18n="act_polygon">Clic en polígono</td>
+              <td data-i18n="eff_polygon">Separar estratos y abrir panel</td>
+            </tr>
+            <tr>
+              <td data-i18n="act_esc">Clic fuera / Esc</td>
+              <td data-i18n="eff_esc">Soltar selección</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
-    <div>
-      <label class="head" for="thick">Grosor de estratos</label>
-      <div class="slider-row">
-        <input id="thick" type="range" min="0" max="1" step="0.01" value="1" />
-        <span class="val" id="thick-val">se tocan</span>
-      </div>
-    </div>
-    <div class="legend">
-      <label class="head">Escala</label>
-      <div class="ramp" id="ramp"></div>
-      <div class="ramp-labels"><span id="ramp-min"></span><span id="ramp-max"></span></div>
-    </div>
+    </details>
   </div>
+
+  <button class="icon-btn square" id="north-btn" title="Alinear Norte (Eje N-S)">⊕</button>
+  <button class="icon-btn square" id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar Tema">
+    <span id="theme-icon">☾</span>
+  </button>
 </div>
 
-<aside id="panel" aria-live="polite">
-  <div class="region-tag" id="p-region"></div>
-  <h2 id="p-name"></h2>
-  <div class="stripes" id="p-stripes" aria-hidden="true"></div>
-  <div class="readout" id="p-readout"></div>
-  <p class="note" id="p-note"></p>
-  <button class="drill" id="p-drill" hidden>Ver países de la subregión →</button>
+<!-- PANEL LATERAL PESTAÑAS -->
+<aside class="main-panel">
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="controls" data-i18n="tab_controls">Controles</button>
+    <button class="tab-btn" data-tab="details" id="tab-btn-details" data-i18n="tab_details">Datos</button>
+    <button class="tab-btn" data-tab="story" data-i18n="tab_story">Contexto</button>
+  </nav>
+
+  <div class="tab-content">
+    
+    <!-- PESTAÑA 1: CONTROLES CON CARRUSEL -->
+    <div class="tab-pane active" id="tab-controls">
+      <div class="control-group">
+        <div class="carousel-nav-header">
+          <label class="head" data-i18n="climate_indicators">Indicadores Climáticos</label>
+          <div class="carousel-arrows">
+            <button class="carousel-arrow" id="carousel-prev" title="Anterior">◄</button>
+            <button class="carousel-arrow" id="carousel-next" title="Siguiente">►</button>
+          </div>
+        </div>
+
+        <div class="carousel-wrapper">
+          <div class="carousel-container" id="carousel-container">
+            <div id="seg-ind" style="display:none;"></div>
+
+            <div class="carousel-card"><div class="seg card-group"></div></div>
+            <div class="carousel-card"><div class="seg card-group"></div></div>
+            <div class="carousel-card"><div class="seg card-group"></div></div>
+            <div class="carousel-card"><div class="seg card-group"></div></div>
+            <div class="carousel-card"><div class="seg card-group"></div></div>
+          </div>
+
+          <div class="carousel-dots" id="carousel-dots">
+            <span class="dot active" data-index="0"></span>
+            <span class="dot" data-index="1"></span>
+            <span class="dot" data-index="2"></span>
+            <span class="dot" data-index="3"></span>
+            <span class="dot" data-index="4"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="head" for="sep" data-i18n="strata_sep">Separación de estratos</label>
+        <div class="slider-row">
+          <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
+          <span class="val" id="sep-val">0 %</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="head" for="thick" data-i18n="strata_thick">Grosor de estratos</label>
+        <div class="slider-row">
+          <input id="thick" type="range" min="0" max="1" step="0.01" value="1" />
+          <span class="val" id="thick-val" data-i18n="val_touching">se tocan</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="head" for="opacity" data-i18n="layer_transparency">Transparencia de capas</label>
+        <div class="slider-row">
+          <input id="opacity" type="range" min="0.1" max="1" step="0.01" value="1" />
+          <span class="val" id="opacity-val" data-i18n="val_opaque">opacas</span>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="head" data-i18n="data_scale">Escala de datos</label>
+        <div class="ramp" id="ramp"></div>
+        <div class="ramp-labels">
+          <span id="ramp-min">-</span>
+          <span id="ramp-max">+</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PESTAÑA 2: DATOS -->
+    <div class="tab-pane" id="tab-details">
+      <div id="panel-empty" data-i18n="panel_empty">Haz clic en una subregión o país del globo 3D para inspeccionar sus datos.</div>
+      
+      <div id="panel" style="display: none;">
+        <div class="region-tag" id="p-region">Subregión</div>
+        <h2 id="p-name"></h2>
+        <div class="stripes" id="p-stripes" aria-hidden="true"></div>
+        <div class="readout" id="p-readout"></div>
+        <p style="font-size: 10.5px; color: var(--ink-dim); margin-top: 8px;" id="p-note"></p>
+        <button class="drill" id="p-drill" hidden data-i18n="btn_drill">Ver países de la subregión →</button>
+      </div>
+    </div>
+
+    <!-- PESTAÑA 3: CONTEXTO -->
+    <div class="tab-pane" id="tab-story">
+      <div class="story-text">
+        <label class="head" style="margin-bottom: 8px; display:block;" data-i18n="story_title">Metodología y Análisis</label>
+        <p data-i18n="story_p1">Esta visualización representa los volúmenes climáticos marinos a lo largo del Pacífico. Cada estrato extruido corresponde a una losa temporal de datos acumulados sobre la ZEE (Zona Económica Exclusiva).</p>
+        <p data-i18n="story_p2">Los cambios en los patrones oceanográficos se reflejan según la escala térmica ajustada, permitiendo comparar visualmente las variaciones climáticas anuales en la subregión.</p>
+      </div>
+    </div>
+
+  </div>
 </aside>
 
-<button class="north" id="north-btn" title="Enderezar el eje norte-sur">⊕ alinear norte</button>
-<div class="hint">
-  clic — separar estratos · clic fuera / Esc — soltar<br />
-  arrastrar — girar · clic central — mover · rueda — acercar
-</div>
-<div class="syn-badge">datos sintéticos · pseudo-ZEE de demostración</div>
+<div class="syn-badge" data-i18n="badge">datos sintéticos · pseudo-ZEE de demostración</div>
 
+<!-- THREE.JS IMPORTS -->
 <script type="importmap">
 {
   "imports": {
@@ -242,6 +762,332 @@
   }
 }
 </script>
-<script type="module" src="main.js"></script>
+
+<script>
+  // DICCIONARIO DE TRADUCCIONES AMPLIADO (ES, EN, FR)
+  const translations = {
+  es: {
+    crumb: "Pacífico · subregiones",
+    crumb_countries: "Pacífico · países y territorios",
+    guide_btn: "Guía de visualización",
+    th_action: "Acción",
+    th_effect: "Efecto",
+    act_drag: "Arrastrar",
+    eff_drag: "Girar el globo libremente sobre su centro",
+    act_north: "«⊕ alinear norte»",
+    eff_north: "Enderezar el eje norte-sur con animación",
+    act_click_center: "Clic central / 2 dedos",
+    eff_click_center: "Mover el globo (X/Y/Z)",
+    act_wheel: "Rueda",
+    eff_wheel: "Acercar y alejar",
+    act_polygon: "Clic en polígono",
+    eff_polygon: "Separar estratos y abrir panel",
+    act_esc: "Clic fuera / Esc",
+    eff_esc: "Soltar selección",
+    tab_controls: "Controles",
+    tab_details: "Datos",
+    tab_story: "Contexto",
+    climate_indicators: "INDICADORES CLIMÁTICOS",
+    strata_sep: "SEPARACIÓN DE ESTRATOS",
+    strata_thick: "GROSOR DE ESTRATOS",
+    val_touching: "se tocan",
+    layer_transparency: "TRANSPARENCE DE CAPAS",
+    val_opaque: "opacas",
+    data_scale: "ESCALA DE DATOS",
+    panel_empty: "Haz clic en una subregión o país del globo 3D para inspeccionar sus datos.",
+    btn_drill: "Ver países de la subregión →",
+    btn_drill_back: "← Volver a subregiones",
+    story_title: "METODOLOGÍA Y ANÁLISIS",
+    story_p1: "Esta visualización representa los volúmenes climáticos marinos a lo largo del Pacífico. Cada estrato extruido corresponde a una losa temporal de datos acumulados sobre la ZEE (Zona Económica Exclusiva).",
+    story_p2: "Los cambios en los patrones oceanográficos se reflejan según la escala térmica ajustada, permitiendo comparar visualmente las variaciones climáticas anuales en la subregión.",
+    badge: "datos sintéticos · pseudo-ZEE de demostración",
+    title_north: "Alinear Norte (Eje N-S)",
+    title_theme: "Cambiar Tema",
+    region_label: "Subregión",
+    country_label: "País / Territorio",
+
+    // === TUS 13 INDICADORES ===
+    temp_anomaly: "Anomalía temp. marina",
+    surface_temp_anomaly: "Anomalía temp. superficie",
+    sea_level: "Nivel del mar (anomalía)",
+    rainfall_anomaly: "Anomalías en precipitaciones",
+    calci: "Índice CALCI",
+    crop_yield: "Rendimiento agrícola",
+    env_taxes: "Impuestos ambientales",
+    fisheries: "Gestión pesquera",
+    ghg_emissions: "Emisiones GEI por cápita",
+    livestock_yield: "Rendimiento ganadero",
+    met_network: "Red meteorológica",
+    power_gen: "Generación de energía",
+    tourism: "Llegada de turistas"
+  },
+  en: {
+    crumb: "Pacific · subregions",
+    crumb_countries: "Pacific · countries & territories",
+    guide_btn: "Visualization Guide",
+    th_action: "Action",
+    th_effect: "Effect",
+    act_drag: "Drag",
+    eff_drag: "Rotate the globe freely on its center",
+    act_north: "«⊕ align north»",
+    eff_north: "Realign north-south axis with animation",
+    act_click_center: "Middle click / 2 fingers",
+    eff_click_center: "Pan the globe (X/Y/Z)",
+    act_wheel: "Scroll wheel",
+    eff_wheel: "Zoom in and out",
+    act_polygon: "Click polygon",
+    eff_polygon: "Separate strata and open panel",
+    act_esc: "Click outside / Esc",
+    eff_esc: "Deselect",
+    tab_controls: "Controls",
+    tab_details: "Data",
+    tab_story: "Context",
+    climate_indicators: "CLIMATE INDICATORS",
+    strata_sep: "STRATA SEPARATION",
+    strata_thick: "STRATA THICKNESS",
+    val_touching: "touching",
+    layer_transparency: "LAYER TRANSPARENCY",
+    val_opaque: "opaque",
+    data_scale: "DATA SCALE",
+    panel_empty: "Click on a subregion or country on the 3D globe to inspect its data.",
+    btn_drill: "View subregion countries →",
+    btn_drill_back: "← Back to subregions",
+    story_title: "METHODOLOGY AND ANALYSIS",
+    story_p1: "This visualization represents marine climate volumes across the Pacific. Each extruded stratum corresponds to a time slice of accumulated EEZ (Exclusive Economic Zone) data.",
+    story_p2: "Changes in oceanographic patterns are reflected according to the adjusted thermal scale, allowing visual comparison of annual climate variations in the subregion.",
+    badge: "synthetic data · demo pseudo-EEZ",
+    title_north: "Align North (N-S Axis)",
+    title_theme: "Toggle Theme",
+    region_label: "Subregion",
+    country_label: "Country / Territory",
+
+    // === TUS 13 INDICADORES ===
+    temp_anomaly: "Sea temp. anomaly",
+    surface_temp_anomaly: "Surface temp. anomaly",
+    sea_level: "Sea level anomaly",
+    rainfall_anomaly: "Rainfall anomaly",
+    calci: "CALCI Index",
+    crop_yield: "Crop yield",
+    env_taxes: "Environmental taxes",
+    fisheries: "Fisheries management",
+    ghg_emissions: "Per capita GHG emissions",
+    livestock_yield: "Livestock yield",
+    met_network: "Meteorological network",
+    power_gen: "Power generation",
+    tourism: "Tourist arrivals"
+  },
+  fr: {
+    crumb: "Pacifique · sous-régions",
+    crumb_countries: "Pacifique · pays et territoires",
+    guide_btn: "Guide de Visualisation",
+    th_action: "Action",
+    th_effect: "Effet",
+    act_drag: "Faire glisser",
+    eff_drag: "Faire pivoter le globe librement autour de son centre",
+    act_north: "«⊕ aligner nord»",
+    eff_north: "Réaligner l'axe nord-sud avec une animation",
+    act_click_center: "Clic central / 2 doigts",
+    eff_click_center: "Déplacer le globe (X/Y/Z)",
+    act_wheel: "Molette",
+    eff_wheel: "Zoom avant et arrière",
+    act_polygon: "Clic sur polygone",
+    eff_polygon: "Séparer las strates et ouvrir le panneau",
+    act_esc: "Clic extérieur / Échap",
+    eff_esc: "Désélectionner",
+    tab_controls: "Contrôles",
+    tab_details: "Données",
+    tab_story: "Contexte",
+    climate_indicators: "INDICATEURS CLIMATIQUES",
+    strata_sep: "SÉPARATION DES STRATES",
+    strata_thick: "ÉPAISSEUR DES STRATES",
+    val_touching: "se touchent",
+    layer_transparency: "TRANSPARENCE DES COUCHES",
+    val_opaque: "opaques",
+    data_scale: "ÉCHELLE DES DONNÉES",
+    panel_empty: "Cliquez sur une sous-région ou un pays du globe 3D pour inspecter ses données.",
+    btn_drill: "Voir les pays de la sous-région →",
+    btn_drill_back: "← Retour aux sous-régions",
+    story_title: "MÉTHODOLOGIE ET ANALYSE",
+    story_p1: "Cette visualisation représente les volumes climatiques marins à travers le Pacifique. Chaque strate extrudée correspond à une tranche temporelle de données accumulées sur la ZEE (Zone Économique Exclusive).",
+    story_p2: "Les changements dans les schémas océanographiques sont reflétés selon l'échelle thermique ajustée, permettant la comparaison visuelle des variations climatiques annuelles.",
+    badge: "données synthétiques · pseudo-ZEE de démonstration",
+    title_north: "Aligner au Nord (Axe N-S)",
+    title_theme: "Changer de Thème",
+    region_label: "Sous-région",
+    country_label: "Pays / Territoire",
+
+    // === TUS 13 INDICADORES ===
+    temp_anomaly: "Anomalie temp. marine",
+    surface_temp_anomaly: "Anomalie temp. surface",
+    sea_level: "Niveau de la mer (anomalie)",
+    rainfall_anomaly: "Anomalies de précipitations",
+    calci: "Indice CALCI",
+    crop_yield: "Rendement agricole",
+    env_taxes: "Taxes environnementales",
+    fisheries: "Gestion des pêches",
+    ghg_emissions: "Émissions GES par habitant",
+    livestock_yield: "Rendement de l'élevage",
+    met_network: "Réseau météorologique",
+    power_gen: "Production d'énergie",
+    tourism: "Arrivées touristiques"
+  }
+};
+
+  // EXPONER DICCIONARIOS EN WINDOW
+  window.i18nDict = translations;
+  window.currentLang = localStorage.getItem("pacific-strata-lang") || "es";
+
+  // CAMBIO DE IDIOMA DINÁMICO MEJORADO
+    window.applyLanguage = function(lang) {
+    window.currentLang = lang;
+    const dict = translations[lang] || translations.es;
+
+    // Traducir nodos DOM estáticos con data-i18n
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const key = el.getAttribute("data-i18n");
+      if (dict[key]) el.textContent = dict[key];
+    });
+
+    // Traducir los botones del carrusel por su ID de indicador (data-ind)
+    document.querySelectorAll("button[data-ind]").forEach(btn => {
+      const key = btn.dataset.ind;
+      if (dict[key]) {
+        btn.textContent = dict[key];
+      }
+    });
+
+    // Traducir atributos 'title' de botones flotantes
+    const northBtn = document.getElementById("north-btn");
+    const themeBtn = document.getElementById("theme-toggle");
+    if (northBtn) northBtn.setAttribute("title", dict.title_north);
+    if (themeBtn) themeBtn.setAttribute("title", dict.title_theme);
+
+    // Despachar evento global para listeners en main.js
+    window.dispatchEvent(new CustomEvent("langchanged", { detail: { lang, dict } }));
+    localStorage.setItem("pacific-strata-lang", lang);
+  };
+
+  const langSelect = document.getElementById("lang-select");
+  langSelect.addEventListener("change", (e) => window.applyLanguage(e.target.value));
+
+  // CARGAR IDIOMA INICIAL
+  langSelect.value = window.currentLang;
+  window.applyLanguage(window.currentLang);
+
+  // PESTAÑAS UI
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+  const panelData = document.getElementById('panel');
+  const panelEmpty = document.getElementById('panel-empty');
+
+  function openTab(tabId) {
+    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+    tabPanes.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
+  }
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => openTab(btn.dataset.tab));
+  });
+
+  const observer = new MutationObserver(() => {
+    const isOpen = panelData.classList.contains('open');
+    if (isOpen) {
+      panelData.style.display = 'flex';
+      panelEmpty.style.display = 'none';
+      openTab('details');
+    } else {
+      panelData.style.display = 'none';
+      panelEmpty.style.display = 'block';
+    }
+  });
+
+  observer.observe(panelData, { attributes: true, attributeFilter: ['class'] });
+
+  // CARRUSEL Y NAVEGACIÓN
+  const carouselContainer = document.getElementById('carousel-container');
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  const dots = document.querySelectorAll('.carousel-dots .dot');
+
+  function updateDots() {
+    if (!carouselContainer) return;
+    const width = carouselContainer.clientWidth;
+    const currentIndex = Math.round(carouselContainer.scrollLeft / width);
+    dots.forEach((dot, index) => {
+      dot.classList.toggle('active', index === currentIndex);
+    });
+  }
+
+  if (prevBtn && nextBtn && carouselContainer) {
+    prevBtn.addEventListener('click', () => {
+      carouselContainer.scrollBy({ left: -carouselContainer.clientWidth, behavior: 'smooth' });
+    });
+
+    nextBtn.addEventListener('click', () => {
+      carouselContainer.scrollBy({ left: carouselContainer.clientWidth, behavior: 'smooth' });
+    });
+
+    carouselContainer.addEventListener('scroll', updateDots);
+
+    dots.forEach(dot => {
+      dot.addEventListener('click', () => {
+        const index = parseInt(dot.dataset.index, 10);
+        carouselContainer.scrollTo({ left: index * carouselContainer.clientWidth, behavior: 'smooth' });
+      });
+    });
+  }
+
+  // REDISTRIBUCIÓN DINÁMICA DE BOTONES
+  window.distributeIndicators = function distributeIndicators() {
+    const hiddenSeg = document.getElementById('seg-ind');
+    const cardGroups = document.querySelectorAll('.card-group');
+
+    if (!hiddenSeg || cardGroups.length === 0) return;
+
+    const buttons = Array.from(hiddenSeg.querySelectorAll('button'));
+    if (buttons.length === 0) return;
+
+    cardGroups.forEach(group => group.innerHTML = "");
+
+    buttons.forEach((btn, index) => {
+      const cardIndex = Math.floor(index / 3);
+      if (cardGroups[cardIndex]) {
+        cardGroups[cardIndex].appendChild(btn);
+      }
+    });
+
+    if (carouselContainer) {
+      carouselContainer.scrollLeft = 0;
+      updateDots();
+    }
+  };
+
+  // TEMA OSCURO / CLARO
+  const themeToggle = document.getElementById("theme-toggle");
+  const themeIcon = document.getElementById("theme-icon");
+  const savedTheme = localStorage.getItem("pacific-strata-theme");
+
+  if (savedTheme === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+    themeIcon.textContent = "☀";
+  }
+
+  themeToggle.addEventListener("click", () => {
+    const isLight = document.documentElement.getAttribute("data-theme") === "light";
+    if (isLight) {
+      document.documentElement.removeAttribute("data-theme");
+      themeIcon.textContent = "☾";
+      localStorage.setItem("pacific-strata-theme", "dark");
+    } else {
+      document.documentElement.setAttribute("data-theme", "light");
+      themeIcon.textContent = "☀";
+      localStorage.setItem("pacific-strata-theme", "light");
+    }
+    window.dispatchEvent(new CustomEvent("themechanged"));
+  });
+</script>
+
+<script type="module" src="./main.js"></script>
+
 </body>
 </html>
