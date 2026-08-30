@@ -93,8 +93,23 @@ EEZ_ISO_FALLBACK = "ISO_SOV1"
 # corresponde a acuerdos formales entre las partes.
 EXCLUDE_POL_TYPES = {"Overlapping claim"}
 
-SIMPLIFY_COUNTRY = 0.08   # EEZ oficial ya es más "limpio": simplificar menos
-SIMPLIFY_REGION = 0.12
+# World EEZ v12 trae 2762 polígonos sueltos para estos 22 territorios, pero solo
+# 32 de ellos suman el 100,000 % del área: los otros 2730 son astillas de
+# topología, de área nula, casi todas en el antimeridiano. Simplificar no las
+# quita —Douglas-Peucker adelgaza un anillo pero no lo borra— y cada una acaba
+# siendo un polígono extruido más por cada uno de los 24 años, con lo que la
+# escena no llegaba ni a construirse. Se descartan por área.
+MIN_PART_AREA = 0.001     # grados cuadrados
+
+# Se simplifica SIN preserve_topology y se repara después con buffer(0). Con
+# topología preservada, Douglas-Peucker se niega a tocar estas ZEE —multipieza
+# y con agujeros— y deja 79 000 vértices por nivel aunque se suba la tolerancia
+# a 1°: son 27 veces más de lo necesario, y multiplicados por 24 losas la
+# escena no llega a construirse. Sin ella bajan a 2 900 con un error de área
+# del 0,28 %, invisible a escala de globo, y las 22 geometrías siguen siendo
+# válidas (se comprueba en simplificar()).
+SIMPLIFY_COUNTRY = 0.05
+SIMPLIFY_REGION = 0.08
 SIMPLIFY_LAND = 0.03
 ROUND = 3
 
@@ -110,6 +125,25 @@ def to_pacific(geom):
             return Polygon(ext, ints)
         return MultiPolygon([shift(p) for p in g.geoms])
     return shift(geom) if geom.geom_type in ("Polygon", "MultiPolygon") else geom
+
+
+def simplificar(geom, tol):
+    """Douglas-Peucker sin preservar topología, reparando con buffer(0)."""
+    out = geom.simplify(tol, preserve_topology=False).buffer(0)
+    if out.is_empty or not out.is_valid:      # nunca ha pasado, pero por si
+        return geom.simplify(tol, preserve_topology=True)
+    return out
+
+
+def drop_slivers(geom, min_area=MIN_PART_AREA):
+    """Quita las partes por debajo de min_area. Devuelve la mayor si no
+    quedara ninguna, para no perder nunca un territorio entero."""
+    if geom.geom_type == "Polygon":
+        return geom
+    partes = [g for g in geom.geoms if g.area >= min_area]
+    if not partes:
+        partes = [max(geom.geoms, key=lambda g: g.area)]
+    return unary_union(partes)
 
 
 def only_polygons(geom):
@@ -155,15 +189,43 @@ def save(path, features):
 
 
 # ---------------------------------------------------------------- pipeline
+def _read_eez_records(eez_path):
+    """Devuelve (propiedades, geometría shapely) de cada rasgo del EEZ.
+
+    Acepta GeoJSON y también los formatos en los que Marine Regions publica de
+    verdad —GeoPackage y shapefile—, que es lo que se descarga del sitio: no
+    ofrecen GeoJSON, y convertir los 164 MB a mano solo para volver a leerlos
+    era un paso de más que además obligaba a tener ogr2ogr instalado.
+    """
+    path = Path(eez_path)
+    if path.suffix.lower() == ".geojson" or path.suffix.lower() == ".json":
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        for f in raw["features"]:
+            yield f["properties"], shape(f["geometry"])
+        return
+
+    try:
+        import pyogrio
+        from shapely import from_wkb
+    except ImportError:
+        sys.exit("Para leer .gpkg/.shp hace falta pyogrio:\n"
+                 "  pip install pyogrio shapely")
+
+    campos = [EEZ_ISO_FIELD, EEZ_ISO_FALLBACK, "POL_TYPE"]
+    meta, _, geoms, valores = pyogrio.raw.read(str(path), columns=campos)
+    cols = dict(zip(list(meta["fields"]), valores))
+    for i in range(len(geoms)):
+        props = {c: cols[c][i] for c in cols}
+        yield props, from_wkb(geoms[i])
+
+
 def load_eez_by_iso(eez_path):
     """Lee World EEZ v12 y agrupa (disuelve) geometría por ISO3, ya en
     coordenadas 0-360 para evitar el antimeridiano."""
-    raw = json.loads(Path(eez_path).read_text(encoding="utf-8"))
     by_iso = {}
     skipped_pol_types = set()
 
-    for f in raw["features"]:
-        p = f["properties"]
+    for p, geom in _read_eez_records(eez_path):
         pol_type = p.get("POL_TYPE") or p.get("Pol_type") or ""
         if pol_type in EXCLUDE_POL_TYPES:
             skipped_pol_types.add(pol_type)
@@ -174,18 +236,25 @@ def load_eez_by_iso(eez_path):
         if iso not in CATALOG:
             continue
 
-        geom = to_pacific(shape(f["geometry"]))
-        by_iso.setdefault(iso, []).append(geom)
+        by_iso.setdefault(iso, []).append(to_pacific(geom))
 
     if skipped_pol_types:
         print(f"  (omitidos por régimen en disputa: {skipped_pol_types})")
 
-    return {iso: unary_union(geoms) for iso, geoms in by_iso.items()}
+    return {iso: drop_slivers(unary_union(geoms))
+            for iso, geoms in by_iso.items()}
 
 
 def main(land_src, eez_src):
     out = Path(__file__).resolve().parent.parent / "web" / "data"
     out.mkdir(parents=True, exist_ok=True)
+
+    # land.json es independiente de las ZEE y ya está generado: se rehace solo
+    # si se pasa la fuente de Natural Earth, para no obligar a bajar 13 MB cada
+    # vez que se quiere reconstruir countries.json y regions.json.
+    if land_src is None:
+        print("(sin fuente de tierra: se conserva el land.json existente)")
+        return main_eez_only(out, eez_src)
 
     # --- land.json: sin cambios, geometría real sin buffer ---
     raw_land = json.loads(Path(land_src).read_text(encoding="utf-8"))
@@ -225,7 +294,7 @@ def main(land_src, eez_src):
     zones_by_region = {"Melanesia": [], "Polynesia": [], "Micronesia": []}
 
     for iso, (name, region) in CATALOG.items():
-        zone = eez_by_iso[iso].simplify(SIMPLIFY_COUNTRY, preserve_topology=True)
+        zone = simplificar(eez_by_iso[iso], SIMPLIFY_COUNTRY)
         zones_by_region[region].append(zone)
         country_feats.append(feature(
             split_antimeridian(zone),
@@ -241,8 +310,7 @@ def main(land_src, eez_src):
     print("Disolviendo subregiones (EEZ oficiales, sin cierre morfológico)…")
     region_feats = []
     for region, zones in zones_by_region.items():
-        merged = unary_union(zones).simplify(SIMPLIFY_REGION,
-                                              preserve_topology=True)
+        merged = simplificar(drop_slivers(unary_union(zones)), SIMPLIFY_REGION)
         region_feats.append(feature(
             split_antimeridian(merged),
             {"id": region, "name": REGION_ES[region]}))
@@ -254,8 +322,46 @@ def main(land_src, eez_src):
     print("Listo.")
 
 
+def main_eez_only(out, eez_src):
+    """countries.json y regions.json desde la misma fuente, sin tocar land."""
+    print("Leyendo World EEZ v12…")
+    eez_by_iso = load_eez_by_iso(eez_src)
+
+    missing = set(CATALOG) - set(eez_by_iso)
+    if missing:
+        sys.exit(f"Faltan EEZ oficiales para: {missing}")
+
+    country_feats = []
+    zones_by_region = {"Melanesia": [], "Polynesia": [], "Micronesia": []}
+    for iso, (name, region) in CATALOG.items():
+        zone = simplificar(eez_by_iso[iso], SIMPLIFY_COUNTRY)
+        zones_by_region[region].append(zone)
+        country_feats.append(feature(split_antimeridian(zone),
+                                     {"id": iso, "name": NOMBRE_ES[name],
+                                      "region": region}))
+
+    print("Disolviendo subregiones (misma fuente que los países)…")
+    region_feats = []
+    for region, zones in zones_by_region.items():
+        merged = simplificar(drop_slivers(unary_union(zones)), SIMPLIFY_REGION)
+        region_feats.append(feature(split_antimeridian(merged),
+                                    {"id": region, "name": REGION_ES[region]}))
+
+    print("Escribiendo salidas:")
+    save(out / "regions.json", region_feats)
+    save(out / "countries.json", country_feats)
+    print("Listo.")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("Uso: python prepare_geometries_eez.py "
-                  "ne_10m_admin_0_countries.geojson World_EEZ_v12.geojson")
-    main(sys.argv[1], sys.argv[2])
+    args = sys.argv[1:]
+    if len(args) == 2:
+        main(args[0], args[1])          # tierra + ZEE
+    elif len(args) == 1:
+        main(None, args[0])             # solo ZEE, conservando land.json
+    else:
+        sys.exit(
+            "Uso:\n"
+            "  python prepare_geometries.py <eez>                 # solo ZEE\n"
+            "  python prepare_geometries.py <ne10.geojson> <eez>  # todo\n"
+            "\n<eez> acepta .gpkg, .shp o .geojson de World EEZ v12.")

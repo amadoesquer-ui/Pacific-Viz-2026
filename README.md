@@ -77,11 +77,17 @@ que no hay que pasar ninguna bandera a mano.
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install shapely
+pip install shapely pyogrio
 
-# 1) Geometrías (descarga Natural Earth 10m una vez, ~13 MB)
+# 1) ZEE oficiales. Descarga World EEZ v12, variante 0-360 grados
+#    (obligatoria: Fiyi, Kiribati y Tuvalu cruzan el antimeridiano) desde
+#    https://www.marineregions.org/downloads.php  — CC-BY, exige atribución.
+#    Se lee el .gpkg directamente, no hace falta convertir a GeoJSON.
+python data_prep\prepare_geometries.py World_EEZ_v12_20231025_0_360\eez_v12_0_360.gpkg
+
+# Para rehacer también land.json (siluetas de tierra, Natural Earth 10m, ~13 MB):
 curl.exe -L -o ne10.geojson https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson
-python data_prep\prepare_geometries.py ne10.geojson
+python data_prep\prepare_geometries.py ne10.geojson World_EEZ_v12_20231025_0_360\eez_v12_0_360.gpkg
 
 # 2) Mapa base de continentes (Natural Earth 110m, dominio público)
 curl.exe -L -o web\data\world.json https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson
@@ -92,9 +98,8 @@ python data_prep\generate_data.py
 python data_prep\generate_data.py --years 10   # series más cortas
 ```
 
-Las geometrías necesitan además `World_EEZ_v12.geojson` de
-[Marine Regions](https://www.marineregions.org/eez.php) (CC-BY, **requiere
-atribución**), que no se incluye en el repo por tamaño.
+La descarga de Marine Regions son 354 MB y está excluida del repo
+(`.gitignore`).
 
 ## Interacción
 
@@ -119,12 +124,18 @@ atribución**), que no se incluye en el repo por tamaño.
 
 ## Decisiones y límites del prototipo
 
-- **ZEE**: el nivel país usa las **ZEE oficiales de Marine Regions World EEZ
-  v12** (CC-BY, requiere atribución), ya delimitadas entre vecinos por derecho
-  internacional. El nivel **subregión sigue disuelto de las pseudo-ZEE** del
-  prototipo (buffers de ~200 mn recortados con una partición tipo
-  Thiessen/Voronoi): `regions.json` está pendiente de regenerar desde la misma
-  fuente que `countries.json`.
+- **ZEE**: los dos niveles salen de las **ZEE oficiales de Marine Regions World
+  EEZ v12** (CC-BY, **requiere atribución**), ya delimitadas entre vecinos por
+  derecho internacional. Las subregiones ONU M49 se obtienen disolviendo esas
+  mismas ZEE por su código M49: la ONU clasifica por lista de países y no
+  publica geometría de subregión.
+- **Simplificación sin preservar topología**. Con `preserve_topology=True`,
+  Douglas-Peucker se niega a tocar estas ZEE —multipieza y con agujeros— y deja
+  79 000 vértices por nivel aunque se suba la tolerancia a 1°; multiplicados por
+  las 24 losas, la escena no llegaba a construirse. Sin ella bajan a 2 900 con
+  un 0,28 % de error de área, invisible a escala de globo, y se repara con
+  `buffer(0)` comprobando validez. Además se descartan las 2 730 astillas de
+  área nula que trae el dataset (de 2 762 partes, solo 32 suman el área).
 - **Dos rampas**: solo 4 de los 13 indicadores se leen contra un cero con
   significado (anomalías de temperatura marina y de superficie, nivel del mar y
   precipitación) y van sobre una **divergente** RdBu con dominio simétrico. Los
@@ -132,8 +143,10 @@ atribución**), que no se incluye en el repo por tamaño.
   con la divergente quedaban todos en la mitad cálida y la leyenda anunciaba un
   mínimo negativo inexistente.
 - **Cobertura desigual**: los CSV de .STAT no cubren todos los países en todos
-  los indicadores. Las series ausentes se saltan y el panel muestra «—»; los
-  huecos internos de una serie se rellenan con el último valor válido.
+  los indicadores — el 26 % de los valores son huecos. Un año sin dato se
+  guarda como `null`, **no como cero**: la gráfica corta la línea en el hueco
+  en vez de bajar a cero, y en el globo la losa va en un gris que no pertenece
+  a ninguna de las dos rampas.
 - **Antimeridiano**: todo el wrangling se hace en longitudes 0–360 y se parte
   en lon=180 al exportar, como recomienda `three-conic-polygon-geometry`.
 - **Mapa base**: las siluetas de tierra (continentes de Natural Earth 110m en
