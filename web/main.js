@@ -25,9 +25,20 @@ const VIEW = { lat: -14, lon: 187, dist: 305, tiltLat: -46 }; // cámara inicial
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Rampa divergente estilo climate stripes (RdBu invertida), 9 paradas.
-const RAMP = ["#08306b", "#2166ac", "#4393c3", "#92c5de", "#f7f7f7",
-              "#f4a582", "#d6604d", "#b2182b", "#67001f"];
+// Dos rampas, porque los 13 indicadores no son del mismo tipo:
+//   · DIVERGENTE (RdBu invertida, estilo climate stripes) para los que se leen
+//     contra un cero con significado —anomalías de temperatura, nivel del mar,
+//     precipitación—: dominio simétrico ±abs, blanco en el cero.
+//   · SECUENCIAL (viridis) para los que solo crecen —turismo, energía, GEI,
+//     rendimientos—. Con la divergente su dominio simétrico ±max dejaba todos
+//     los valores en la mitad cálida y la leyenda anunciaba un −1 058 000
+//     turistas que no existe.
+// Ambas son legibles en daltonismo y sobre los dos temas.
+const RAMP_DIV = ["#08306b", "#2166ac", "#4393c3", "#92c5de", "#f7f7f7",
+                  "#f4a582", "#d6604d", "#b2182b", "#67001f"];
+const RAMP_SEQ = ["#440154", "#472d7b", "#3b528b", "#2c728e", "#21918c",
+                  "#28ae80", "#5ec962", "#addc30", "#fde725"];
+const rampOf = dom => dom.diverging ? RAMP_DIV : RAMP_SEQ;
 
 // Paletas de la escena 3D. Las del interfaz (HTML) viven en las variables
 // CSS de index.html; aquí solo lo que pinta WebGL.
@@ -142,11 +153,14 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const easeOut = t => 1 - Math.pow(1 - t, 3);
 
 function colorFor(v, dom) {
-  // dominio simétrico alrededor de 0 → t ∈ [0,1]
-  const t = Math.min(1, Math.max(0, (v / dom.abs + 1) / 2));
-  const i = Math.min(RAMP.length - 2, Math.floor(t * (RAMP.length - 1)));
-  const f = t * (RAMP.length - 1) - i;
-  return new THREE.Color(RAMP[i]).lerp(new THREE.Color(RAMP[i + 1]), f);
+  // divergente: dominio simétrico alrededor de 0. secuencial: [min, max].
+  const raw = dom.diverging ? (v / dom.abs + 1) / 2
+                            : (v - dom.min) / (dom.max - dom.min);
+  const t = Math.min(1, Math.max(0, raw));
+  const ramp = rampOf(dom);
+  const i = Math.min(ramp.length - 2, Math.floor(t * (ramp.length - 1)));
+  const f = t * (ramp.length - 1) - i;
+  return new THREE.Color(ramp[i]).lerp(new THREE.Color(ramp[i + 1]), f);
 }
 
 // ------------------------------------------------------------------ carga
@@ -162,13 +176,25 @@ const YEARS = dataset.meta.years;
 const INDICATORS = dataset.meta.indicators;
 state.indicator = INDICATORS[0].id;
 
-// dominios simétricos por indicador (todas las unidades, todos los años)
+// dominio por indicador (todas las unidades, todos los años). Los divergentes
+// usan `abs` (simétrico); los secuenciales, `min`/`max`. Se calculan los tres
+// en la misma pasada. Los CSV de .STAT no cubren todos los países, así que hay
+// series ausentes: se saltan en vez de reventar el recorrido.
 for (const ind of INDICATORS) {
-  let abs = 0;
+  let abs = 0, min = Infinity, max = -Infinity;
   for (const series of Object.values(dataset.values)) {
-    for (const v of series[ind.id]) abs = Math.max(abs, Math.abs(v));
+    if (!series[ind.id]) continue;
+    for (const v of series[ind.id]) {
+      abs = Math.max(abs, Math.abs(v));
+      min = Math.min(min, v);
+      max = Math.max(max, v);
+    }
   }
-  state.domain[ind.id] = { abs: abs || 1 };
+  if (min > max) { min = 0; max = 1; }        // indicador sin ningún dato
+  state.domain[ind.id] = {
+    abs: abs || 1, min, max,
+    diverging: ind.diverging !== false,
+  };
 }
 
 // -------- mapa base: siluetas de tierra rasterizadas a un lienzo
@@ -352,7 +378,8 @@ function recolor() {
   const dom = state.domain[state.indicator];
   for (const level of ["region", "country"]) {
     for (const u of units[level]) {
-      const series = dataset.values[u.id][state.indicator];
+      const series = dataset.values[u.id]?.[state.indicator];
+      if (!series) continue;           // .STAT no cubre todos los indicadores
       u.slabs.forEach((s, i) => {
         const c = colorFor(series[i], dom);
         for (const m of s.meshes) m.material.color.copy(c);
@@ -528,7 +555,7 @@ function select(u) {
 
 function fillPanel(u) {
   const ind = INDICATORS.find(i => i.id === state.indicator);
-  const series = dataset.values[u.id][state.indicator];
+  const series = dataset.values[u.id]?.[state.indicator] ?? [];
   const dom = state.domain[state.indicator];
 
   document.getElementById("p-region").textContent =
@@ -537,10 +564,10 @@ function fillPanel(u) {
 
   const stripes = document.getElementById("p-stripes");
   stripes.innerHTML = "";
-  series.forEach(v => {
+  series.forEach((v, i) => {
     const d = document.createElement("div");
     d.style.background = "#" + colorFor(v, dom).getHexString();
-    d.title = v;
+    d.title = `${YEARS[i]}: ${nf.format(v)} ${ind.unit}`;
     stripes.appendChild(d);
   });
 
@@ -549,14 +576,18 @@ function fillPanel(u) {
   YEARS.forEach((y, i) => {
     const row = document.createElement("div");
     row.className = "row";
-    row.innerHTML = `<span class="y">${y}</span><span>${series[i]} ${ind.unit}</span>`;
+    const v = series[i];
+    row.innerHTML = `<span class="y">${y}</span><span>${
+      v === undefined ? "—" : `${nf.format(v)} ${ind.unit}`}</span>`;
     ro.appendChild(row);
   });
 
+  // El nivel país ya son EEZ oficiales (Marine Regions v12); el de subregión
+  // sigue disuelto de las pseudo-ZEE, así que no se anuncia lo que no es.
   document.getElementById("p-note").textContent =
     u.level === "region"
-      ? `Agregación: ${dataset.meta.aggregation}. Datos sintéticos de demostración.`
-      : "Datos sintéticos de demostración sobre pseudo-ZEE.";
+      ? `Agregación: ${dataset.meta.aggregation}, sobre pseudo-ZEE.`
+      : "ZEE oficial (Marine Regions v12).";
   drillBtn.hidden = u.level !== "region";
 }
 
@@ -662,13 +693,18 @@ function applyTheme(name) {
   segTheme.appendChild(b);
 });
 
+// Con datos reales los extremos van de 0,2 m a 1 058 000 turistas, así que se
+// formatean en vez de volcarse crudos.
+const nf = new Intl.NumberFormat("es", { maximumSignificantDigits: 3 });
+
 function paintLegend() {
   const ind = INDICATORS.find(i => i.id === state.indicator);
   const dom = state.domain[state.indicator];
   document.getElementById("ramp").style.background =
-    `linear-gradient(90deg, ${RAMP.join(",")})`;
-  document.getElementById("ramp-min").textContent = `−${dom.abs} ${ind.unit}`;
-  document.getElementById("ramp-max").textContent = `+${dom.abs} ${ind.unit}`;
+    `linear-gradient(90deg, ${rampOf(dom).join(",")})`;
+  const [lo, hi] = dom.diverging ? [-dom.abs, dom.abs] : [dom.min, dom.max];
+  document.getElementById("ramp-min").textContent = `${nf.format(lo)} ${ind.unit}`;
+  document.getElementById("ramp-max").textContent = `${nf.format(hi)} ${ind.unit}`;
 }
 
 // ------------------------------------------------------------------ arranque
