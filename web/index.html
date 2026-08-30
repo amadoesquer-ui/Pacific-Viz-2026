@@ -16,9 +16,25 @@
     --ink: #e9f1f7;
     --ink-dim: #8aa2b8;
     --lagoon: #56d6c2;
+    --lagoon-soft: rgba(86, 214, 194, 0.12);
     --sand: #f2d98d;
+    --sand-line: rgba(242, 217, 141, 0.4);
     --ui: "Archivo", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --abyss: #eaf1f7;
+    --ocean: #c3d8e8;
+    --panel: rgba(255, 255, 255, 0.9);
+    --line: rgba(23, 60, 95, 0.18);
+    --ink: #0f1f2e;
+    --ink-dim: #4d6b85;
+    --lagoon: #0a7d6c;
+    --lagoon-soft: rgba(10, 125, 108, 0.14);
+    --sand: #8a6a12;
+    --sand-line: rgba(138, 106, 18, 0.45);
+    color-scheme: light;
   }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
@@ -82,7 +98,7 @@
     all: unset; cursor: pointer; flex: 1; text-align: center;
     padding: 7px 10px; font-size: 12px; font-weight: 500; color: var(--ink-dim);
   }
-  .seg button[aria-pressed="true"] { background: rgba(86,214,194,.12); color: var(--lagoon); }
+  .seg button[aria-pressed="true"] { background: var(--lagoon-soft); color: var(--lagoon); }
   .seg button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
 
   .slider-row { display: flex; align-items: center; gap: 10px; }
@@ -126,7 +142,7 @@
     border: 1px solid var(--lagoon); color: var(--lagoon);
     font-size: 12px; font-weight: 500; letter-spacing: .06em;
   }
-  #panel .drill:hover { background: rgba(86,214,194,.1); }
+  #panel .drill:hover { background: var(--lagoon-soft); }
   #panel .drill:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   .hint {
@@ -140,13 +156,13 @@
     color: var(--lagoon); background: var(--panel); backdrop-filter: blur(6px);
     font-size: 11.5px; font-weight: 500; letter-spacing: .06em;
   }
-  .north:hover { background: rgba(86,214,194,.12); }
+  .north:hover { background: var(--lagoon-soft); }
   .north:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   .syn-badge {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     z-index: 4; font-family: var(--mono); font-size: 10px;
-    color: var(--sand); border: 1px dashed rgba(242,217,141,.4);
+    color: var(--sand); border: 1px dashed var(--sand-line);
     padding: 3px 10px; pointer-events: none;
   }
 
@@ -196,18 +212,29 @@
       <div class="seg" id="seg-ind" role="group"></div>
     </div>
     <div>
-      <label class="head" for="sep">Separación de estratos</label>
+      <label class="head" for="height">Altura del seleccionado</label>
       <div class="slider-row">
-        <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
-        <span class="val" id="sep-val">10 %</span>
+        <input id="height" type="range" min="1" max="10" step="0.1" value="3" />
+        <span class="val" id="height-val">3 ×</span>
       </div>
     </div>
     <div>
-      <label class="head" for="thick">Grosor de estratos</label>
+      <label class="head" for="sep">Separación de estratos</label>
       <div class="slider-row">
-        <input id="thick" type="range" min="0" max="1" step="0.01" value="1" />
-        <span class="val" id="thick-val">se tocan</span>
+        <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
+        <span class="val" id="sep-val">volumen</span>
       </div>
+    </div>
+    <div>
+      <label class="head" for="opacity">Transparencia de capas</label>
+      <div class="slider-row">
+        <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
+        <span class="val" id="opacity-val">opacas</span>
+      </div>
+    </div>
+    <div>
+      <label class="head" for="seg-theme">Tema</label>
+      <div class="seg" id="seg-theme" role="group"></div>
     </div>
     <div class="legend">
       <label class="head">Escala</label>
@@ -226,7 +253,7 @@
   <button class="drill" id="p-drill" hidden>Ver países de la subregión →</button>
 </aside>
 
-<button class="north" id="north-btn" title="Enderezar el eje norte-sur">⊕ alinear norte</button>
+<button class="north" id="north-btn" title="Poner los meridianos verticales">⊕ alinear norte</button>
 <div class="hint">
   clic — separar estratos · clic fuera / Esc — soltar<br />
   arrastrar — girar · clic central — mover · rueda — acercar

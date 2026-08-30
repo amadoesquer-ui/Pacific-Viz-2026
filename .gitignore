@@ -3,3 +3,7 @@ ne10.geojson
 *.pyc
 __pycache__/
 .venv/
+
+# salida y descargas del generador del HTML autocontenido
+dist/
+.cache/

@@ -11,11 +11,15 @@ import ConicPolygonGeometry from "three-conic-polygon-geometry";
 
 // ------------------------------------------------------------------ config
 const R = 100;                       // radio del globo
-const BASE_ALT = 1.2;                // separación del fondo de la pila
-const STACK_T = 7;                   // grosor total de la pila (todas las losas)
-const SEP_MIN = 0.10;                // separación con el slider al mínimo (× paso)
-const SEP_MAX = 1.50;                // separación con el slider al máximo (× paso)
-const THICK_MIN = 0.15;              // grosor de losa sin seleccionar (fracción del paso)
+const BASE_ALT = 0;                // separación del fondo de la pila
+const STACK_T = 2;                   // grosor total de la pila (todas las losas)
+const THICK_MIN = 1;                 // grosor de losa sin seleccionar (fracción del paso)
+// Altura de la pila SELECCIONADA, como múltiplo de la de las no seleccionadas:
+// a 1× se ve exactamente igual que las demás; a 10×, diez veces más alta.
+const H_MIN = 1, H_MAX = 10, H_DEF = 3;
+// Hueco máximo entre losas, como fracción del paso. No llega a 1 porque ahí la
+// losa tendría grosor cero; a 0.85 queda un estrato del 15 % del paso.
+const SEP_MAX_FRAC = 0.85;
 const CURV = { region: 2.0, country: 3.5 }; // resolución de curvatura (°)
 const VIEW = { lat: -14, lon: 187, dist: 305, tiltLat: -46 }; // cámara inicial
 
@@ -25,14 +29,31 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const RAMP = ["#08306b", "#2166ac", "#4393c3", "#92c5de", "#f7f7f7",
               "#f4a582", "#d6604d", "#b2182b", "#67001f"];
 
+// Paletas de la escena 3D. Las del interfaz (HTML) viven en las variables
+// CSS de index.html; aquí solo lo que pinta WebGL.
+const THEMES = {
+  dark: {
+    bg: 0x060d18, ocean: 0x0e2036, land: 0x3a5a78,
+    grid: 0x7fb4e0, gridOpacity: 0.08,
+    ambient: 0xbfd4e6, ambientI: 0.85, sunI: 1.35, fillI: 0.35,
+  },
+  light: {
+    bg: 0xeaf1f7, ocean: 0xc3d8e8, land: 0x87a2ba,
+    grid: 0x2f6288, gridOpacity: 0.12,
+    ambient: 0xffffff, ambientI: 1.05, sunI: 1.0, fillI: 0.25,
+  },
+};
+let theme = THEMES.dark;
+
 // ------------------------------------------------------------------ estado
 const state = {
   level: "region",          // "region" | "country"
   regionId: null,           // subregión activa en nivel país
   indicator: null,          // id del indicador
   selected: null,           // unit seleccionada (objeto unit)
-  separation: 0,            // 0 volumen … 1 estratos
-  thickness: 1,             // grosor de losa como fracción del paso (1 = se tocan)
+  separation: 0,            // 0 volumen … 1 estratos (reparte, no añade altura)
+  height: H_DEF,            // altura del seleccionado, × la de los no seleccionados
+  opacity: 1,               // opacidad de las losas (1 = opacas)
   domain: {},               // por indicador: {min, max, abs}
 };
 const units = { region: [], country: [] };   // {id, name, region?, group, slabs[]}
@@ -44,7 +65,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#060d18");
+scene.background = new THREE.Color(theme.bg);
 
 const camera = new THREE.PerspectiveCamera(38, 1, 1, 3000);
 placeCamera();
@@ -54,11 +75,12 @@ placeCamera();
 // dedos lo desplazan y la rueda hace zoom moviendo la cámara.
 const ZOOM_MIN = 150, ZOOM_MAX = 650, ROT_SPEED = 0.005;
 
-scene.add(new THREE.AmbientLight(0xbfd4e6, 0.85));
-const sun = new THREE.DirectionalLight(0xffffff, 1.35);
+const ambient = new THREE.AmbientLight(theme.ambient, theme.ambientI);
+scene.add(ambient);
+const sun = new THREE.DirectionalLight(0xffffff, theme.sunI);
 sun.position.set(-320, 260, 180);
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0x6ba0d6, 0.35);
+const fill = new THREE.DirectionalLight(0x6ba0d6, theme.fillI);
 fill.position.set(280, -140, -220);
 scene.add(fill);
 
@@ -67,11 +89,20 @@ scene.add(fill);
 const globe = new THREE.Group();
 scene.add(globe);
 
-// esfera oceánica opaca (evita ver a través del globo)
+// esfera oceánica opaca con el mapa base proyectado como textura
+// (drawBaseMap la dibuja cuando cargan las geometrías y al cambiar de tema)
+const mapCanvas = Object.assign(document.createElement("canvas"),
+  { width: 4096, height: 2048 });
+const mapTexture = new THREE.CanvasTexture(mapCanvas);
+mapTexture.colorSpace = THREE.SRGBColorSpace;
+mapTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 globe.add(new THREE.Mesh(
   new THREE.SphereGeometry(R, 96, 64),
-  new THREE.MeshStandardMaterial({ color: "#0e2036", roughness: 0.92, metalness: 0.05 })
+  new THREE.MeshStandardMaterial({ map: mapTexture, roughness: 0.92, metalness: 0.05 })
 ));
+
+const gridMat = new THREE.LineBasicMaterial(
+  { color: theme.grid, transparent: true, opacity: theme.gridOpacity });
 globe.add(graticule());
 
 // ------------------------------------------------------------------ utils
@@ -92,9 +123,8 @@ function placeCamera() {
 
 function graticule() {
   const g = new THREE.Group();
-  const mat = new THREE.LineBasicMaterial({ color: 0x7fb4e0, transparent: true, opacity: 0.08 });
   const mk = pts => g.add(new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(pts), mat));
+    new THREE.BufferGeometry().setFromPoints(pts), gridMat));
   for (let lat = -60; lat <= 60; lat += 15) {
     const pts = [];
     for (let lon = -180; lon <= 180; lon += 4) pts.push(polar2Cartesian(lat, lon, R + 0.15));
@@ -120,8 +150,8 @@ function colorFor(v, dom) {
 }
 
 // ------------------------------------------------------------------ carga
-const [regions, countries, land, dataset] = await Promise.all(
-  ["regions", "countries", "land", "dataset"]
+const [regions, countries, land, world, dataset] = await Promise.all(
+  ["regions", "countries", "land", "world", "dataset"]
     .map(f => fetch(`data/${f}.json`).then(r => {
       if (!r.ok) throw new Error(`No se pudo cargar data/${f}.json`);
       return r.json();
@@ -141,16 +171,62 @@ for (const ind of INDICATORS) {
   state.domain[ind.id] = { abs: abs || 1 };
 }
 
-// siluetas de tierra (orientación)
-{
-  const mat = new THREE.MeshBasicMaterial({ color: 0x3a5a78, side: THREE.DoubleSide });
-  for (const f of land.features) {
+// -------- mapa base: siluetas de tierra rasterizadas a un lienzo
+// equirrectangular y proyectadas como textura de la esfera. Cada anillo se
+// desenrolla en longitud (sin saltos de ±360°) y se dibuja en tres copias
+// desplazadas un ancho de lienzo, con lo que los polígonos que cruzan el
+// antimeridiano no dejan costura ni se rellenan por el lado largo (el bug
+// que tenía la versión extruida con ConicPolygonGeometry).
+// u = (lon + 90)/360 casa el UV de SphereGeometry con polar2Cartesian.
+function drawBaseMap() {
+  const W = mapCanvas.width, H = mapCanvas.height;
+  const ctx = mapCanvas.getContext("2d");
+  const hex = c => "#" + c.toString(16).padStart(6, "0");
+  ctx.fillStyle = hex(theme.ocean);
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = hex(theme.land);
+  // continentes (Natural Earth 110m) debajo; encima las siluetas detalladas
+  // de los países del Pacífico (a 110m los atolones desaparecen)
+  for (const f of [...world.features, ...land.features]) {
     for (const poly of asPolys(f.geometry)) {
-      const geo = new ConicPolygonGeometry(poly, R, R + 0.35, false, true, false, 1.5);
-      globe.add(new THREE.Mesh(geo, mat));
+      const path = new Path2D();
+      let polar = false;
+      for (const ring of poly) {
+        const pts = [];
+        let prev = null;
+        for (const [lon, lat] of ring) {
+          const l = prev === null ? lon : lon + Math.round((prev - lon) / 360) * 360;
+          prev = l;
+          pts.push([(l + 90) / 360 * W, (90 - lat) / 180 * H]);
+        }
+        // Un anillo que rodea un polo (Antártida) no cierra sobre sí mismo al
+        // desenrollarlo: da una vuelta completa y acaba un ancho de lienzo a la
+        // derecha de donde empezó. Cerrarlo en línea recta lo convertiría en una
+        // banda con los colores invertidos, así que se remata por el borde del
+        // lienzo, que es el polo: bajar, cruzar y cerrar.
+        const first = pts[0], last = pts[pts.length - 1];
+        if (Math.abs(last[0] - first[0]) > W / 2) {
+          polar = true;
+          const lats = ring.map(p => p[1]);
+          const alNorte = 90 - Math.max(...lats);   // lo que le falta para el N
+          const alSur = Math.min(...lats) + 90;     // …y para el S
+          const yPole = alSur < alNorte ? H : 0;    // encierra el más cercano
+          pts.push([last[0], yPole], [first[0], yPole]);
+        }
+        for (const dx of [-W, 0, W]) {
+          path.moveTo(pts[0][0] + dx, pts[0][1]);
+          for (let i = 1; i < pts.length; i++) path.lineTo(pts[i][0] + dx, pts[i][1]);
+          path.closePath();
+        }
+      }
+      // evenodd respeta los anillos-agujero, pero anularía el solape entre las
+      // tres copias de un anillo polar (más ancho que el lienzo): ahí, nonzero.
+      ctx.fill(path, polar ? "nonzero" : "evenodd");
     }
   }
+  mapTexture.needsUpdate = true;
 }
+drawBaseMap();
 
 function asPolys(geometry) {
   return geometry.type === "Polygon" ? [geometry.coordinates]
@@ -164,7 +240,7 @@ function buildUnits(fc, level) {
     const { id, name, region } = f.properties;
     const group = new THREE.Group();
     group.visible = level === "region";
-    const unit = { id, name, region, level, group, slabs: [], hover: false };
+    const unit = { id, name, region, level, group, slabs: [] };
 
     YEARS.forEach((year, i) => {
       const r0 = R + BASE_ALT + i * slabT;
@@ -175,11 +251,12 @@ function buildUnits(fc, level) {
           poly, r0, r0 + slabT * THICK_MIN, true, true, true, CURV[level]);
         const mat = new THREE.MeshStandardMaterial({
           roughness: 0.55, metalness: 0.0,
-          emissive: 0x000000, emissiveIntensity: 0.55,
           // DoubleSide: las paredes laterales de la librería quedan con la
           // normal hacia dentro según el sentido del anillo; con culling se
           // "pierde" la cara que miras de frente
           side: THREE.DoubleSide,
+          opacity: state.opacity,
+          transparent: state.opacity < 1,
         });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.userData = { unit, yearIndex: i, r0, poly };
@@ -199,28 +276,76 @@ buildUnits(countries, "country");
 
 const slabT = STACK_T / YEARS.length;
 
-// -------- grosor de estratos: reconstruye la geometría de las losas.
-// El slider solo aplica a la unidad SELECCIONADA; el resto se dibuja
-// siempre al grosor mínimo (THICK_MIN).
+// -------- geometría de la pila. Los dos sliders solo afectan a la unidad
+// SELECCIONADA; el resto se dibuja siempre con el paso base y grosor completo.
+//
+// Los dos controles son independientes por diseño:
+//   · ALTURA fija cuánto mide la pila: su paso es state.height veces el paso
+//     base, así que a 1× ocupa exactamente lo mismo que las no seleccionadas
+//     y a 10× es diez veces más alta.
+//   · SEPARACIÓN reparte ese paso entre losa y hueco (0 = volumen macizo,
+//     1 = estratos finos), sin cambiar la altura total. Si añadiera altura,
+//     a 1× el seleccionado sobresaldría de las demás y se rompería el anclaje.
+const sepFrac = () => state.separation * SEP_MAX_FRAC;
+
+// La pila acaba en el techo de su última losa, que con hueco es más fina; sin
+// corregirlo la altura encogería hasta un 8 % al separar. Como
+// alto = paso·(n − sepFrac), se despeja el paso para que el techo caiga
+// siempre en state.height × la altura de las no seleccionadas.
+const pitchOf = u => state.selected === u
+  ? slabT * state.height * YEARS.length / (YEARS.length - sepFrac())
+  : slabT;
+// desplazamiento radial extra por índice: lleva la losa desde el paso con el
+// que se construyó la geometría (slabT) hasta el paso que le toca ahora
+const gapOf = u => pitchOf(u) - slabT;
+
+// La animación desplaza cada losa escalándola por k = (r0 + i·gap)/r0, y ese
+// escalado uniforme multiplica también su grosor; por eso la geometría se
+// extruye a t/k, para que el grosor final sea exactamente t.
 function rebuildUnit(u) {
-  const t = slabT * (state.selected === u ? state.thickness : THICK_MIN);
+  const isSel = state.selected === u;
+  const pitch = pitchOf(u), gap = gapOf(u);
+  const t = isSel ? pitch * (1 - sepFrac()) : pitch * THICK_MIN;
   for (const s of u.slabs) {
+    const k = (s.r0 + s.yearIndex * gap) / s.r0;
     for (const m of s.meshes) {
       m.geometry.dispose();
       m.geometry = new ConicPolygonGeometry(
-        m.userData.poly, s.r0, s.r0 + t, true, true, true, CURV[u.level]);
+        m.userData.poly, s.r0, s.r0 + t / k, true, true, true, CURV[u.level]);
     }
   }
 }
 
-let thicknessQueued = false;
-function applyThickness() {         // 1 rebuild por frame como mucho
-  if (thicknessQueued || !state.selected) return;
-  thicknessQueued = true;
+let rebuildQueued = false;
+function queueRebuild() {           // 1 rebuild por frame como mucho
+  if (rebuildQueued || !state.selected) return;
+  rebuildQueued = true;
   requestAnimationFrame(() => {
-    thicknessQueued = false;
+    rebuildQueued = false;
     if (state.selected) rebuildUnit(state.selected);
   });
+}
+
+// -------- transparencia: se aplica a TODAS las pilas (a diferencia de los
+// otros dos sliders), porque su utilidad es ver a través del volumen —los
+// estratos interiores, el mapa y las pilas de detrás—. Con las losas
+// translúcidas se desactiva depthWrite: si no, la losa que se dibuja primero
+// tapa por profundidad a las de atrás y la pila se ve hueca en vez de
+// estratificada.
+function applyOpacity() {
+  const opaque = state.opacity >= 1;
+  for (const level of ["region", "country"]) {
+    for (const u of units[level]) {
+      for (const s of u.slabs) {
+        for (const m of s.meshes) {
+          m.material.opacity = state.opacity;
+          m.material.transparent = !opaque;
+          m.material.depthWrite = opaque;
+          m.material.needsUpdate = true;
+        }
+      }
+    }
+  }
 }
 
 function recolor() {
@@ -255,20 +380,19 @@ function animate(now) {
     }
   }
 
-  const sepGap = lerp(SEP_MIN, SEP_MAX, state.separation) * slabT;
+  // Sin resaltado por color: la pila seleccionada se distingue por su altura,
+  // y teñirla falseaba la lectura de la rampa (el emisivo desaturaba el color
+  // del dato, que es justo lo que hay que comparar contra la leyenda).
   for (const level of ["region", "country"]) {
     for (const u of units[level]) {
       if (!u.group.visible) continue;
-      const isSel = state.selected === u;
-      const gap = isSel ? sepGap : 0;
-      const emissive = isSel ? 0x223b46 : (u.hover ? 0x14343c : 0x000000);
+      const gap = gapOf(u);
       for (const s of u.slabs) {
         const target = (s.r0 + s.yearIndex * gap) / s.r0;
         for (const m of s.meshes) {
           const cur = m.scale.x;
           const next = REDUCED ? target : lerp(cur, target, 0.14);
           m.scale.setScalar(Math.abs(next - target) < 1e-4 ? target : next);
-          m.material.emissive.setHex(emissive);
         }
       }
     }
@@ -325,11 +449,27 @@ function panGlobe(dx, dy) {
 }
 
 document.getElementById("north-btn").addEventListener("click", () => {
-  // rotación mínima que lleva el eje Y local del globo al Y del mundo
-  const yWorld = new THREE.Vector3(0, 1, 0).applyQuaternion(globe.quaternion);
-  const dq = new THREE.Quaternion()
-    .setFromUnitVectors(yWorld, new THREE.Vector3(0, 1, 0));
-  northTarget = dq.multiply(globe.quaternion);
+  // Meridianos verticales EN PANTALLA: lleva el eje N-S del globo al «arriba»
+  // de la cámara. (Al Y del mundo no sirve: la cámara está inclinada y
+  // quedaría el casquete polar de frente, con los meridianos en abanico.)
+  // Conserva la longitud que mira a la cámara para que el globo no dé
+  // bandazos: solo rueda hasta poner el ecuador de frente.
+  const v = camera.position.clone().sub(globe.position).normalize(); // globo→cámara
+  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+  up.addScaledVector(v, -up.dot(v)).normalize();  // arriba de pantalla, ⟂ v
+  // punto que mira a la cámara, en coordenadas locales del globo…
+  const faceL = v.clone().applyQuaternion(_q.copy(globe.quaternion).invert());
+  faceL.setY(0);                                  // …bajado a su longitud del ecuador
+  if (faceL.lengthSq() < 1e-6) faceL.set(1, 0, 0); // mirando un polo: da igual cuál
+  faceL.normalize();
+  const north = new THREE.Vector3(0, 1, 0);
+  // rotación que lleva la base local (longitud, norte) a la de pantalla (v, up)
+  const mLocal = new THREE.Matrix4().makeBasis(
+    faceL, north, new THREE.Vector3().crossVectors(faceL, north));
+  const mView = new THREE.Matrix4().makeBasis(
+    v, up, new THREE.Vector3().crossVectors(v, up));
+  northTarget = new THREE.Quaternion()
+    .setFromRotationMatrix(mView.multiply(mLocal.transpose()));
   if (REDUCED) { globe.quaternion.copy(northTarget); northTarget = null; }
 });
 
@@ -359,10 +499,8 @@ canvas.addEventListener("pointermove", e => {
     canvas.style.cursor = "grabbing";
     return;
   }
-  const u = unitAt(e.clientX, e.clientY);
-  for (const lv of ["region", "country"]) for (const x of units[lv]) x.hover = false;
-  if (u) u.hover = true;
-  canvas.style.cursor = u ? "pointer" : "grab";
+  // el cursor es toda la respuesta al hover: no se tiñe la geometría
+  canvas.style.cursor = unitAt(e.clientX, e.clientY) ? "pointer" : "grab";
 });
 canvas.addEventListener("wheel", e => {
   e.preventDefault();
@@ -469,19 +607,60 @@ const sep = document.getElementById("sep");
 const sepVal = document.getElementById("sep-val");
 sep.addEventListener("input", () => {
   state.separation = +sep.value;
-  sepVal.textContent =
-    Math.round(lerp(SEP_MIN, SEP_MAX, state.separation) * 100) + " %";
+  sepVal.textContent = state.separation < 0.01 ? "volumen"
+                     : Math.round(sepFrac() * 100) + " %";
+  queueRebuild();   // la separación reparte el paso: cambia el grosor de la losa
 });
 
-const thick = document.getElementById("thick");
-const thickVal = document.getElementById("thick-val");
-thick.addEventListener("input", () => {
-  state.thickness = lerp(THICK_MIN, 1, +thick.value);
-  thickVal.textContent = +thick.value > 0.98 ? "se tocan"
-                       : Math.round(state.thickness * 100) + " %";
-  applyThickness();
+const hgt = document.getElementById("height");
+const hgtVal = document.getElementById("height-val");
+hgt.addEventListener("input", () => {
+  state.height = +hgt.value;
+  hgtVal.textContent = state.height < 1.05 ? "igual"
+                     : (+state.height.toFixed(1)) + " ×";
+  queueRebuild();
 });
 
+const opa = document.getElementById("opacity");
+const opaVal = document.getElementById("opacity-val");
+opa.addEventListener("input", () => {
+  state.opacity = +opa.value;
+  opaVal.textContent = state.opacity >= 1 ? "opacas"
+                     : Math.round((1 - state.opacity) * 100) + " %";
+  applyOpacity();
+});
+
+
+// -------- tema claro / oscuro: repinta el interfaz (atributo en <html>, que
+// conmuta las variables CSS) y los materiales de la escena 3D.
+const THEME_KEY = "pacific-strata:theme";
+const segTheme = document.getElementById("seg-theme");
+
+function applyTheme(name) {
+  theme = THEMES[name] || THEMES.dark;
+  document.documentElement.dataset.theme = name;
+
+  scene.background.setHex(theme.bg);
+  drawBaseMap();                     // océano + tierra viven en la textura
+  gridMat.color.setHex(theme.grid);
+  gridMat.opacity = theme.gridOpacity;
+  ambient.color.setHex(theme.ambient);
+  ambient.intensity = theme.ambientI;
+  sun.intensity = theme.sunI;
+  fill.intensity = theme.fillI;
+
+  segTheme.querySelectorAll("button").forEach(b =>
+    b.setAttribute("aria-pressed", b.dataset.theme === name));
+  try { localStorage.setItem(THEME_KEY, name); } catch { /* modo privado */ }
+}
+
+[["dark", "Oscuro"], ["light", "Claro"]].forEach(([id, label]) => {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.dataset.theme = id;
+  b.addEventListener("click", () => applyTheme(id));
+  segTheme.appendChild(b);
+});
 
 function paintLegend() {
   const ind = INDICATORS.find(i => i.id === state.indicator);
@@ -501,8 +680,14 @@ function resize() {
 }
 addEventListener("resize", resize);
 resize();
+{ // preferencia guardada; si no la hay, la del sistema
+  let saved = null;
+  try { saved = localStorage.getItem(THEME_KEY); } catch { /* modo privado */ }
+  applyTheme(saved ?? (matchMedia("(prefers-color-scheme: light)").matches
+    ? "light" : "dark"));
+}
 recolor();
 requestAnimationFrame(animate);
 
 // hook de depuración (consola / pruebas automatizadas)
-window.__ps = { state, units, globe, camera };
+window.__ps = { state, units, globe, camera, select };
