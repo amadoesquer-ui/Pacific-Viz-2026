@@ -82,6 +82,18 @@ NOMBRE_ES = {
 REGION_ES = {"Melanesia": "Melanesia", "Polynesia": "Polinesia",
              "Micronesia": "Micronesia"}
 
+# World EEZ v12 identifica por ISO3, pero .STAT —y por tanto dataset.json—
+# usa ISO2. El id que se escribe en countries.json tiene que ser el del dataset,
+# porque main.js cruza los dos por ese campo; si no, el nivel país se queda sin
+# datos EN SILENCIO: la unidad existe, se dibuja y no encuentra su serie.
+ISO3_A_ISO2 = {
+    "FJI": "FJ", "PNG": "PG", "SLB": "SB", "VUT": "VU", "NCL": "NC",
+    "WSM": "WS", "ASM": "AS", "TON": "TO", "TUV": "TV", "COK": "CK",
+    "NIU": "NU", "TKL": "TK", "WLF": "WF", "PYF": "PF", "PCN": "PN",
+    "FSM": "FM", "PLW": "PW", "MHL": "MH", "KIR": "KI", "NRU": "NR",
+    "GUM": "GU", "MNP": "MP",
+}
+
 # Nombre de campo ISO3 en tu descarga de World EEZ v12. Verifica con el
 # comando del docstring; versiones antiguas usaban "ISO_Ter1" o "Iso_Ter1".
 EEZ_ISO_FIELD = "ISO_TER1"
@@ -298,7 +310,7 @@ def main(land_src, eez_src):
         zones_by_region[region].append(zone)
         country_feats.append(feature(
             split_antimeridian(zone),
-            {"id": iso, "name": NOMBRE_ES[name], "region": region}))
+            {"id": ISO3_A_ISO2[iso], "name": NOMBRE_ES[name], "region": region}))
 
         land = land_by_iso3_ne.get(iso)
         if land is not None:
@@ -337,7 +349,8 @@ def main_eez_only(out, eez_src):
         zone = simplificar(eez_by_iso[iso], SIMPLIFY_COUNTRY)
         zones_by_region[region].append(zone)
         country_feats.append(feature(split_antimeridian(zone),
-                                     {"id": iso, "name": NOMBRE_ES[name],
+                                     {"id": ISO3_A_ISO2[iso],
+                                      "name": NOMBRE_ES[name],
                                       "region": region}))
 
     print("Disolviendo subregiones (misma fuente que los países)…")
@@ -350,7 +363,24 @@ def main_eez_only(out, eez_src):
     print("Escribiendo salidas:")
     save(out / "regions.json", region_feats)
     save(out / "countries.json", country_feats)
+    check_ids(out, country_feats + region_feats)
     print("Listo.")
+
+
+def check_ids(out, feats):
+    """Avisa si algún id no tiene serie en dataset.json. Sin esto, un desajuste
+    de códigos (ISO3 frente a ISO2) deja el nivel país sin datos sin que nada
+    falle: las pilas se dibujan y simplemente no encuentran su serie."""
+    ds = out / "dataset.json"
+    if not ds.exists():
+        return
+    values = json.loads(ds.read_text(encoding="utf-8"))["values"]
+    huerfanos = [f["properties"]["id"] for f in feats
+                 if f["properties"]["id"] not in values]
+    if huerfanos:
+        print(f"  AVISO: sin datos en dataset.json para {huerfanos}")
+    else:
+        print(f"  ids verificados contra dataset.json ({len(feats)} unidades)")
 
 
 if __name__ == "__main__":
