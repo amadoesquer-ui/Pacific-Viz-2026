@@ -10,3 +10,10 @@ dist/
 
 # dependencias de desarrollo (playwright, puppeteer)
 node_modules/
+
+# fuente de ZEE descargada de Marine Regions (354 MB, CC-BY): no va al repo
+World_EEZ_v12*/
+*.gpkg
+*.shp
+*.dbf
+*.shx

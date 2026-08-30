@@ -137,11 +137,15 @@ def main():
                 ind_id = ind["id"]
                 source = sources.get(ind_id, {})
                 iso_data = source.get(iso, {})
-                serie = [iso_data.get(yr, 0.0) for yr in years]
+                # None, no 0.0: un año sin dato no es un cero. Rellenarlo con
+                # cero pintaba un valor falso en la gráfica y en el globo, y
+                # obligaba a tratar el 0 como "sin dato" más abajo, con lo que
+                # una anomalía de exactamente 0.00 —que es dato real— se perdía.
+                serie = [iso_data.get(yr) for yr in years]
                 values[iso][ind_id] = serie
                 per_indicator_children[ind_id].append(serie)
 
-        # Región = media simple filtrando países sin datos (ceros)
+        # Región = media simple de los países CON dato ese año
         values[region] = {}
         for ind in INDICATORS:
             ind_id = ind["id"]
@@ -149,14 +153,10 @@ def main():
             
             avg_series = []
             for i in range(len(years)):
-                # Tomar solo los valores diferentes de cero para calcular el promedio real
-                valid_vals = [s[i] for s in series if s[i] != 0.0]
-                if valid_vals:
-                    avg_val = sum(valid_vals) / len(valid_vals)
-                else:
-                    avg_val = 0.0
-                avg_series.append(round(avg_val, 2))
-                
+                valid_vals = [s[i] for s in series if s[i] is not None]
+                avg_series.append(
+                    round(sum(valid_vals) / len(valid_vals), 2) if valid_vals else None)
+
             values[region][ind_id] = avg_series
 
     # Guardar resultado en web/data/dataset.json

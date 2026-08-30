@@ -45,12 +45,12 @@ const rampOf = dom => dom.diverging ? RAMP_DIV : RAMP_SEQ;
 // CSS de index.html; aquí solo lo que pinta WebGL.
 const THEMES = {
   dark: {
-    bg: 0x060d18, ocean: 0x0e2036, land: 0x3a5a78,
+    bg: 0x060d18, ocean: 0x0e2036, land: 0x3a5a78, noData: 0x2b3a4a,
     grid: 0x7fb4e0, gridOpacity: 0.08,
     ambient: 0xbfd4e6, ambientI: 0.85, sunI: 1.35, fillI: 0.35,
   },
   light: {
-    bg: 0xeaf1f7, ocean: 0xc3d8e8, land: 0x87a2ba,
+    bg: 0xeaf1f7, ocean: 0xc3d8e8, land: 0x87a2ba, noData: 0xb9c4cf,
     grid: 0x2f6288, gridOpacity: 0.12,
     ambient: 0xffffff, ambientI: 1.05, sunI: 1.0, fillI: 0.25,
   },
@@ -154,7 +154,10 @@ function graticule() {
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeOut = t => 1 - Math.pow(1 - t, 3);
 
+// Un año sin dato NO es un cero: se pinta con un gris neutro que no pertenece
+// a ninguna de las dos rampas, para que no se confunda con un valor bajo.
 function colorFor(v, dom) {
+  if (v === null || v === undefined) return new THREE.Color(theme.noData);
   // divergente: dominio simétrico alrededor de 0. secuencial: [min, max].
   const raw = dom.diverging ? (v / dom.abs + 1) / 2
                             : (v - dom.min) / (dom.max - dom.min);
@@ -187,6 +190,7 @@ for (const ind of INDICATORS) {
   for (const series of Object.values(dataset.values)) {
     if (!series[ind.id]) continue;
     for (const v of series[ind.id]) {
+      if (v === null) continue;
       abs = Math.max(abs, Math.abs(v));
       min = Math.min(min, v);
       max = Math.max(max, v);
@@ -396,7 +400,7 @@ function recolor() {
     }
   }
   paintLegend();
-  if (state.selected) fillPanel(state.selected);
+  drawChart();
 }
 
 // ------------------------------------------------------------------ animación de pilas
@@ -573,7 +577,6 @@ canvas.addEventListener("wheel", e => {
 addEventListener("keydown", e => { if (e.key === "Escape") select(null); });
 
 // ------------------------------------------------------------------ selección / niveles
-const panel = document.getElementById("panel");
 const drillBtn = document.getElementById("p-drill");
 const crumb = document.getElementById("crumb");
 
@@ -585,66 +588,14 @@ function select(u) {
   // sale (vuelve a THICK_MIN) y la que entra (toma el valor del slider)
   if (prev && prev !== u) rebuildUnit(prev);
   if (u && u !== prev) rebuildUnit(u);
-  panel.classList.toggle("open", !!u);
-  recolor();            // cambia qué pilas van atenuadas; ya rellena el panel
+  recolor();            // cambia qué pilas van atenuadas; ya rehace la gráfica
 }
 
-// El año destacado vive en dos sitios a la vez: la losa del globo (la mueve y
-// la ilumina animate) y la franja y la fila del panel (clase .active).
+// El año destacado vive en dos sitios: la losa del globo (la mueve y la
+// ilumina animate) y el punto de la gráfica (lo resalta y saca el globito).
 function setHoveredYear(i) {
   state.hoveredYear = i;
-  const stripes = document.getElementById("p-stripes");
-  stripes.classList.toggle("has-active", i !== null);
-  stripes.querySelectorAll("div").forEach((d, k) =>
-    d.classList.toggle("active", k === i));
-  document.querySelectorAll("#p-readout .row").forEach((r, k) =>
-    r.classList.toggle("active", k === i));
-}
-
-function fillPanel(u) {
-  const ind = INDICATORS.find(i => i.id === state.indicator);
-  const series = dataset.values[u.id]?.[state.indicator] ?? [];
-  const dom = state.domain[state.indicator];
-
-  document.getElementById("p-region").textContent =
-    u.level === "region" ? t("region_label") : u.region;
-  document.getElementById("p-name").textContent = u.name;
-
-  const stripes = document.getElementById("p-stripes");
-  stripes.innerHTML = "";
-  series.forEach((v, i) => {
-    const d = document.createElement("div");
-    d.style.background = "#" + colorFor(v, dom).getHexString();
-    d.title = `${YEARS[i]}: ${nf.format(v)} ${ind.unit}`;
-    d.addEventListener("mouseenter", () => setHoveredYear(i));
-    d.addEventListener("mouseleave", () => setHoveredYear(null));
-    stripes.appendChild(d);
-  });
-
-  const ro = document.getElementById("p-readout");
-  ro.innerHTML = "";
-  YEARS.forEach((y, i) => {
-    const row = document.createElement("div");
-    row.className = "row";
-    const v = series[i];
-    row.innerHTML = `<span class="y">${y}</span><span>${
-      v === undefined ? "—" : `${nf.format(v)} ${ind.unit}`}</span>`;
-    row.addEventListener("mouseenter", () => setHoveredYear(i));
-    row.addEventListener("mouseleave", () => setHoveredYear(null));
-    ro.appendChild(row);
-  });
-
-  // El nivel país ya son EEZ oficiales (Marine Regions v12); el de subregión
-  // sigue disuelto de las pseudo-ZEE, así que no se anuncia lo que no es.
-  document.getElementById("p-note").textContent =
-    u.level === "region"
-      ? t("note_region", { agg: dataset.meta.aggregation })
-      : t("note_country");
-
-  // fillPanel reconstruye franjas y filas, así que el año destacado se vuelve
-  // a marcar (p. ej. al cambiar de indicador con el cursor sobre una franja)
-  if (state.hoveredYear !== null) setHoveredYear(state.hoveredYear);
-  drillBtn.hidden = u.level !== "region";
+  paintTip(i);
 }
 
 drillBtn.addEventListener("click", () => {
@@ -682,71 +633,280 @@ function exitRegion() {
 }
 
 // ------------------------------------------------------------------ controles
-// -------- carrusel de indicadores. Con 13 indicadores la fila de botones ya
-// no cabe en el panel, así que se paginan de PER_PAGE en PER_PAGE. Las páginas
-// y los puntos se generan aquí desde INDICATORS: así el número de puntos no
-// puede desincronizarse del de indicadores al añadir uno.
-const PER_PAGE = 3;
-const carousel = document.getElementById("carousel");
-const dots = document.getElementById("carousel-dots");
-const prevBtn = document.getElementById("carousel-prev");
-const nextBtn = document.getElementById("carousel-next");
-const nPages = Math.ceil(INDICATORS.length / PER_PAGE);
+// -------- cintillo de indicadores: los 13 a la vista, con desplazamiento
+// horizontal. Sustituye al carrusel paginado: con una sola fila se compara de
+// un vistazo qué indicador hay activo sin tener que pasar páginas.
+const ribbon = document.getElementById("ribbon");
 
-for (let p = 0; p < nPages; p++) {
-  const page = document.createElement("div");
-  page.className = "carousel-page";
-  const grp = document.createElement("div");
-  grp.className = "seg";
-  for (const ind of INDICATORS.slice(p * PER_PAGE, (p + 1) * PER_PAGE)) {
-    const b = document.createElement("button");
-    b.dataset.ind = ind.id;          // clave de traducción del nombre
-    b.textContent = t(ind.id, null, ind.name);
-    b.title = ind.unit;
-    b.setAttribute("aria-pressed", ind.id === state.indicator);
-    b.addEventListener("click", () => {
-      if (state.indicator === ind.id) return;
-      state.indicator = ind.id;
-      carousel.querySelectorAll("button").forEach(x =>
-        x.setAttribute("aria-pressed", x === b));
-      recolor();
-    });
-    grp.appendChild(b);
+for (const ind of INDICATORS) {
+  const b = document.createElement("button");
+  b.dataset.ind = ind.id;              // clave de traducción del nombre
+  b.textContent = t(ind.id, null, ind.name);
+  b.title = ind.unit;
+  b.setAttribute("aria-pressed", ind.id === state.indicator);
+  b.addEventListener("click", () => {
+    if (state.indicator === ind.id) return;
+    state.indicator = ind.id;
+    for (const x of ribbon.children) x.setAttribute("aria-pressed", x === b);
+    // el activo puede quedar fuera de la parte visible del cintillo
+    b.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    recolor();
+  });
+  ribbon.appendChild(b);
+}
+
+// -------- pestañas del panel inferior
+const panes = { "tab-data": "pane-data", "tab-ctrl": "pane-ctrl" };
+
+function openTab(id) {
+  for (const [tab, pane] of Object.entries(panes)) {
+    document.getElementById(tab).setAttribute("aria-selected", tab === id);
+    document.getElementById(pane).hidden = tab !== id;
   }
-  page.appendChild(grp);
-  carousel.appendChild(page);
-
-  const dot = document.createElement("button");
-  dot.setAttribute("role", "tab");
-  dot.dataset.page = p + 1;
-  dot.setAttribute("aria-label", t("dots_page", { n: p + 1, total: nPages }));
-  dot.setAttribute("aria-current", p === 0);
-  dot.addEventListener("click", () => goToPage(p));
-  dots.appendChild(dot);
+  if (id === "tab-data") drawChart();   // el SVG necesita ancho visible
 }
 
-// La página se deduce del scroll en vez de llevarse en una variable aparte:
-// el contenedor también se desplaza arrastrando o con la rueda, y así flechas
-// y puntos siguen contando lo mismo que se ve.
-const pageOf = () => Math.round(carousel.scrollLeft / carousel.clientWidth);
+for (const tab of Object.keys(panes))
+  document.getElementById(tab).addEventListener("click", () => openTab(tab));
 
-function goToPage(p) {
-  carousel.scrollTo({ left: p * carousel.clientWidth, behavior: "smooth" });
+// -------- colapsar los paneles para dejar el globo limpio. El botón de
+// cerrar vive dentro del panel, donde se espera encontrarlo, así que se va con
+// él; el de restaurar vive fuera y solo aparece cuando hace falta.
+for (const [panelId, ocultar, mostrar] of
+     [["story", "hide-story", "show-story"], ["dock", "hide-dock", "show-dock"]]) {
+  const el = document.getElementById(panelId);
+  const btnOcultar = document.getElementById(ocultar);
+  const btnMostrar = document.getElementById(mostrar);
+  const set = colapsado => {
+    el.classList.toggle("collapsed", colapsado);
+    btnMostrar.hidden = !colapsado;
+    // el SVG se dibuja al ancho que tenga: al volver, hay que rehacerlo
+    if (!colapsado && panelId === "dock") drawChart();
+  };
+  btnOcultar.addEventListener("click", () => set(true));
+  btnMostrar.addEventListener("click", () => set(false));
 }
 
-function syncCarousel() {
-  const p = pageOf();
-  dots.querySelectorAll("button").forEach((d, i) =>
-    d.setAttribute("aria-current", i === p));
-  prevBtn.disabled = p <= 0;
-  nextBtn.disabled = p >= nPages - 1;
+// -------- relato por pasos: un párrafo a la vez, con Anterior / Siguiente.
+// Los pasos son las claves story_p1, story_p2… del diccionario, así que
+// añadir uno es añadir una clave en los tres idiomas y nada más.
+const storyBody = document.getElementById("story-body");
+const storyN = document.getElementById("story-n");
+const storyPrev = document.getElementById("story-prev");
+const storyNext = document.getElementById("story-next");
+let storyStep = 0;
+
+const storySteps = () => {
+  const out = [];
+  for (let n = 1; ; n++) {
+    const k = `story_p${n}`;
+    if (t(k, null, "") === "") break;
+    out.push(k);
+  }
+  return out;
+};
+
+function paintStory() {
+  const pasos = storySteps();
+  storyStep = Math.min(storyStep, pasos.length - 1);
+  storyBody.innerHTML = "";
+  const par = document.createElement("p");
+  par.textContent = t(pasos[storyStep]);
+  storyBody.appendChild(par);
+  storyBody.scrollTop = 0;
+  storyN.textContent = t("story_step", { n: storyStep + 1, total: pasos.length });
+  storyPrev.disabled = storyStep === 0;
+  storyNext.disabled = storyStep === pasos.length - 1;
 }
 
-prevBtn.addEventListener("click", () => goToPage(pageOf() - 1));
-nextBtn.addEventListener("click", () => goToPage(pageOf() + 1));
-carousel.addEventListener("scroll", syncCarousel, { passive: true });
-syncCarousel();
+storyPrev.addEventListener("click", () => { storyStep--; paintStory(); });
+storyNext.addEventListener("click", () => { storyStep++; paintStory(); });
 
+// ------------------------------------------------------------------ gráfica
+// Serie de tiempo en SVG a mano: sin dependencias, y así el generador del
+// HTML autocontenido no tiene que incrustar ni resolver una librería más.
+//
+// El trazado se anima con stroke-dasharray/offset: se fija el guion a la
+// longitud total de la línea y se lleva el desfase de esa longitud a cero, con
+// lo que la línea «avanza» de izquierda a derecha sin recalcular la ruta en
+// cada cuadro. Los puntos aparecen detrás del trazo, cada uno a su tiempo.
+const SVG_NS = "http://www.w3.org/2000/svg";
+const chart = document.getElementById("chart");
+const chartWrap = document.getElementById("chart-wrap");
+const chartEmpty = document.getElementById("chart-empty");
+const chartTip = document.getElementById("chart-tip");
+const PAD = { t: 10, r: 12, b: 22, l: 46 };
+
+const mk = (tag, attrs = {}) => {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+};
+
+let chartPts = [];        // {x, y, v, year} en coordenadas del SVG, para el hover
+
+function drawChart() {
+  const u = state.selected;
+  const ind = INDICATORS.find(i => i.id === state.indicator);
+  const serie = u ? dataset.values[u.id]?.[state.indicator] : null;
+
+  chartWrap.hidden = !u || !serie;
+  chartEmpty.hidden = !chartWrap.hidden;
+  if (chartWrap.hidden) {
+    chartEmpty.textContent = u
+      ? t("chart_nodata", { who: u.name })     // seleccionado pero sin serie
+      : t("chart_empty");
+    return;
+  }
+
+  document.getElementById("chart-ind").textContent = t(ind.id, null, ind.name);
+  document.getElementById("chart-who").textContent = u.name;
+  document.getElementById("chart-uom").textContent = ind.unit;
+
+  const w = chart.clientWidth || 600, h = chart.clientHeight || 176;
+  chart.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  chart.innerHTML = "";
+  chartTip.hidden = true;
+
+  // Escala vertical con un 8 % de aire arriba y abajo. Si el indicador es
+  // divergente se fuerza a incluir el cero: una anomalía se lee respecto a él,
+  // y una serie que no lo cruce daría una gráfica que miente por encuadre.
+  const dom = state.domain[state.indicator];
+  const conDato = serie.filter(v => v !== null);
+  if (!conDato.length) {                 // la serie existe pero está vacía
+    chartWrap.hidden = true;
+    chartEmpty.hidden = false;
+    chartEmpty.textContent = t("chart_nodata", { who: u.name });
+    return;
+  }
+  let lo = Math.min(...conDato), hi = Math.max(...conDato);
+  if (dom.diverging) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (lo === hi) { lo -= 1; hi += 1; }            // serie plana
+  const aire = (hi - lo) * 0.08;
+  lo -= aire; hi += aire;
+
+  const x = i => PAD.l + i * (w - PAD.l - PAD.r) / Math.max(YEARS.length - 1, 1);
+  const y = v => PAD.t + (hi - v) * (h - PAD.t - PAD.b) / (hi - lo);
+
+  // ejes y rótulos
+  chart.appendChild(mk("line", { class: "axis", x1: PAD.l, y1: PAD.t, x2: PAD.l, y2: h - PAD.b }));
+  chart.appendChild(mk("line", { class: "axis", x1: PAD.l, y1: h - PAD.b, x2: w - PAD.r, y2: h - PAD.b }));
+  if (lo < 0 && hi > 0)
+    chart.appendChild(mk("line", { class: "zero", x1: PAD.l, y1: y(0), x2: w - PAD.r, y2: y(0) }));
+
+  for (const v of [hi - aire, lo + aire]) {
+    const tx = mk("text", { class: "tick", x: PAD.l - 6, y: y(v) + 3, "text-anchor": "end" });
+    tx.textContent = nf.format(v);
+    chart.appendChild(tx);
+  }
+  // primer y último año; con 24 años, uno cada 6 para que no se amontonen
+  YEARS.forEach((yr, i) => {
+    if (i !== 0 && i !== YEARS.length - 1 && i % 6 !== 0) return;
+    const tx = mk("text", { class: "tick", x: x(i), y: h - PAD.b + 13, "text-anchor": "middle" });
+    tx.textContent = yr;
+    chart.appendChild(tx);
+  });
+
+  chartPts = serie.map((v, i) => ({
+    x: x(i), y: v === null ? null : y(v), v, year: YEARS[i],
+  }));
+
+  // La línea se corta en los huecos —un «M» reinicia el trazo— en vez de
+  // saltarlos con un segmento recto, que insinuaría una interpolación que
+  // nadie ha hecho. Un año suelto entre dos huecos queda sin segmento, y por
+  // eso se dibuja igualmente su punto.
+  let corte = true;
+  const d = chartPts.map(p => {
+    if (p.y === null) { corte = true; return ""; }
+    const cmd = corte ? "M" : "L";
+    corte = false;
+    return `${cmd}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+  }).filter(Boolean).join(" ");
+
+  const linea = mk("path", { class: "line", d });
+  chart.appendChild(linea);
+
+  const guia = mk("line", { class: "guide", y1: PAD.t, y2: h - PAD.b, opacity: 0 });
+  chart.appendChild(guia);
+
+  chartPts.forEach((p, i) => {
+    if (p.y !== null) {
+      const c = mk("circle", { class: "dot", cx: p.x, cy: p.y, r: 3, opacity: 0 });
+      c.style.fill = "#" + colorFor(p.v, dom).getHexString();
+      chart.appendChild(c);
+      p.dot = c;
+    }
+
+    // zona de captura ancha: acertar un círculo de 3 px con el ratón es un
+    // suplicio, así que cada punto tiene su franja vertical
+    const hit = mk("rect", {
+      class: "hit", x: p.x - (w - PAD.l - PAD.r) / (2 * Math.max(YEARS.length - 1, 1)),
+      y: PAD.t, width: (w - PAD.l - PAD.r) / Math.max(YEARS.length - 1, 1), height: h - PAD.t - PAD.b,
+    });
+    hit.addEventListener("mouseenter", () => setHoveredYear(i));
+    hit.addEventListener("mouseleave", () => setHoveredYear(null));
+    chart.appendChild(hit);
+  });
+
+  chart._guia = guia;
+  animarTrazo(linea);
+  drillBtn.hidden = u.level !== "region";
+}
+
+// Trazado que avanza. Con reduced-motion se pinta de golpe.
+function animarTrazo(linea) {
+  const total = linea.getTotalLength();
+  const puntos = chartPts;
+  if (REDUCED) {
+    for (const p of puntos) p.dot?.setAttribute("opacity", 1);
+    return;
+  }
+  linea.style.strokeDasharray = total;
+  linea.style.strokeDashoffset = total;
+  const DUR = 700;
+  const t0 = performance.now();
+  (function paso(now) {
+    const k = Math.min(1, (now - t0) / DUR);
+    linea.style.strokeDashoffset = total * (1 - easeOut(k));
+    // cada punto se enciende cuando el trazo lo alcanza
+    for (const p of puntos)
+      p.dot?.setAttribute("opacity", (p.x - PAD.l) / (total || 1) <= k * 1.6 ? 1 : 0);
+    if (k < 1) requestAnimationFrame(paso);
+    else for (const p of puntos) p.dot?.setAttribute("opacity", 1);
+  })(t0);
+}
+
+// Globito con el valor exacto del año señalado, y la guía vertical.
+function paintTip(i) {
+  const p = i === null ? null : chartPts[i];
+  const guia = chart._guia;
+  if (!p) {
+    chartTip.hidden = true;
+    if (guia) guia.setAttribute("opacity", 0);
+    for (const q of chartPts) q.dot?.setAttribute("r", 3);
+    return;
+  }
+  const ind = INDICATORS.find(x => x.id === state.indicator);
+  chartTip.innerHTML = `<span class="y">${p.year}</span>` +
+    (p.v === null ? t("val_nodata") : `${nf.format(p.v)} ${ind.unit}`);
+  // el SVG escala con el ancho del panel: hay que pasar de coordenadas del
+  // viewBox a píxeles reales antes de colocar el globito
+  const k = chart.clientWidth / (chart.viewBox.baseVal.width || 1);
+  const py = p.y ?? chart.viewBox.baseVal.height / 2;   // el hueco no tiene y
+  chartTip.style.top = `${py * k + chart.offsetTop}px`;
+  chartTip.hidden = false;
+  // El globito va centrado sobre el punto, pero en los años de los extremos se
+  // saldría del panel: se acota al ancho de la gráfica midiéndolo ya visible.
+  const mitad = chartTip.offsetWidth / 2;
+  chartTip.style.left =
+    `${Math.min(Math.max(p.x * k, mitad), chart.clientWidth - mitad)}px`;
+  if (guia) { guia.setAttribute("x1", p.x); guia.setAttribute("x2", p.x); guia.setAttribute("opacity", 1); }
+  for (const q of chartPts) q.dot?.setAttribute("r", q === p ? 5 : 3);
+}
+
+// -------- sliders (pestaña Controles). Los tres son estado, no plantilla:
+// su texto se recalcula, no se traduce con data-i18n, y por eso applyLang los
+// vuelve a disparar con un evento «input» sintético.
 const sep = document.getElementById("sep");
 const sepVal = document.getElementById("sep-val");
 sep.addEventListener("input", () => {
@@ -774,7 +934,6 @@ opa.addEventListener("input", () => {
   applyOpacity();
 });
 
-
 // -------- tema claro / oscuro: repinta el interfaz (atributo en <html>, que
 // conmuta las variables CSS) y los materiales de la escena 3D.
 const THEME_KEY = "pacific-strata:theme";
@@ -786,6 +945,7 @@ function applyTheme(name) {
 
   scene.background.setHex(theme.bg);
   drawBaseMap();                     // océano + tierra viven en la textura
+  recolor();                         // el gris de «sin dato» es del tema
   gridMat.color.setHex(theme.grid);
   gridMat.opacity = theme.gridOpacity;
   ambient.color.setHex(theme.ambient);
@@ -824,39 +984,41 @@ function paintLegend() {
 
 // ------------------------------------------------------------------ idioma
 // setLang repinta los nodos marcados con data-i18n en el HTML. Lo que genera
-// este archivo no lleva marca, así que se repinta aquí: nombres de indicador,
-// puntos del carrusel, valores de los sliders (que además son estado, no
-// plantilla) y el panel, que se rehace entero con recolor().
-const langSelect = document.getElementById("lang-select");
-for (const [id, label] of LANGS) {
-  const o = document.createElement("option");
-  o.value = id;
-  o.textContent = label;            // cada idioma en su propia lengua
-  langSelect.appendChild(o);
+// este archivo no lleva marca, asi que se repinta aqui: nombres del cintillo,
+// valores de los sliders (que ademas son estado, no plantilla), el relato,
+// la miga y la grafica, que rehace recolor().
+//
+// El selector es de dos letras y sin bandera: Windows no dibuja los emoji de
+// bandera, con lo que se verian como las dos letras sueltas de todos modos.
+const langBox = document.getElementById("lang");
+for (const [id] of LANGS) {
+  const b = document.createElement("button");
+  b.dataset.lang = id;
+  b.textContent = id.toUpperCase();
+  b.addEventListener("click", () => applyLang(id));
+  langBox.appendChild(b);
 }
 
 function applyLang(next) {
   setLang(next, () => {
     nf = new Intl.NumberFormat(next, { maximumSignificantDigits: 3 });
 
-    for (const b of carousel.querySelectorAll("button[data-ind]")) {
+    for (const b of ribbon.querySelectorAll("button[data-ind]")) {
       const ind = INDICATORS.find(i => i.id === b.dataset.ind);
       b.textContent = t(ind.id, null, ind.name);
     }
-    for (const d of dots.querySelectorAll("button"))
-      d.setAttribute("aria-label", t("dots_page", { n: d.dataset.page, total: nPages }));
 
     sep.dispatchEvent(new Event("input"));
     hgt.dispatchEvent(new Event("input"));
     opa.dispatchEvent(new Event("input"));
 
+    paintStory();
     paintCrumb();
-    recolor();                      // leyenda y panel
+    recolor();                      // leyenda y grafica
   });
-  langSelect.value = next;
+  for (const b of langBox.children)
+    b.setAttribute("aria-pressed", b.dataset.lang === next);
 }
-
-langSelect.addEventListener("change", e => applyLang(e.target.value));
 
 // ------------------------------------------------------------------ arranque
 function resize() {
@@ -864,7 +1026,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  syncCarousel();      // la página se deduce de clientWidth, que acaba de cambiar
+  drawChart();         // el SVG se dibuja al ancho del panel, que cambio
 }
 addEventListener("resize", resize);
 resize();
@@ -874,8 +1036,10 @@ resize();
   applyTheme(saved ?? (matchMedia("(prefers-color-scheme: light)").matches
     ? "light" : "dark"));
 }
-applyLang(initialLang());     // ya llama a recolor(), que pinta leyenda y panel
+paintStory();
+openTab("tab-data");
+applyLang(initialLang());     // ya llama a recolor(), que pinta leyenda y gráfica
 requestAnimationFrame(animate);
 
 // hook de depuración (consola / pruebas automatizadas)
-window.__ps = { state, units, globe, camera, select, applyLang };
+window.__ps = { state, units, globe, camera, select, applyLang, openTab, drawChart };
