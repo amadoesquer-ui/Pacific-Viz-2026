@@ -8,6 +8,7 @@
  */
 import * as THREE from "three";
 import ConicPolygonGeometry from "three-conic-polygon-geometry";
+import { t, setLang, initialLang, LANGS } from "./i18n.js";
 
 // ------------------------------------------------------------------ config
 const R = 100;                       // radio del globo
@@ -606,7 +607,7 @@ function fillPanel(u) {
   const dom = state.domain[state.indicator];
 
   document.getElementById("p-region").textContent =
-    u.level === "region" ? "Subregión" : u.region;
+    u.level === "region" ? t("region_label") : u.region;
   document.getElementById("p-name").textContent = u.name;
 
   const stripes = document.getElementById("p-stripes");
@@ -637,8 +638,8 @@ function fillPanel(u) {
   // sigue disuelto de las pseudo-ZEE, así que no se anuncia lo que no es.
   document.getElementById("p-note").textContent =
     u.level === "region"
-      ? `Agregación: ${dataset.meta.aggregation}, sobre pseudo-ZEE.`
-      : "ZEE oficial (Marine Regions v12).";
+      ? t("note_region", { agg: dataset.meta.aggregation })
+      : t("note_country");
 
   // fillPanel reconstruye franjas y filas, así que el año destacado se vuelve
   // a marcar (p. ej. al cambiar de indicador con el cursor sobre una franja)
@@ -657,12 +658,18 @@ function enterRegion(regionId) {
   select(null);
   for (const u of units.region) u.group.visible = false;
   for (const u of units.country) u.group.visible = u.region === regionId;
-  const name = unitById[regionId].name;
+  paintCrumb();
+}
+
+// La miga se pinta aparte de enterRegion/exitRegion porque también hay que
+// rehacerla al cambiar de idioma, y esas dos deseleccionan de paso.
+function paintCrumb() {
+  if (state.level !== "country") { crumb.textContent = t("crumb"); return; }
   crumb.innerHTML = "";
   const back = document.createElement("button");
   back.textContent = "← Pacífico";
   back.addEventListener("click", exitRegion);
-  crumb.append(back, ` · ${name} · países y territorios`);
+  crumb.append(back, ` · ${unitById[state.regionId].name} · ${t("crumb_suffix")}`);
 }
 
 function exitRegion() {
@@ -671,7 +678,7 @@ function exitRegion() {
   select(null);
   for (const u of units.country) u.group.visible = false;
   for (const u of units.region) u.group.visible = true;
-  crumb.textContent = "Pacífico · subregiones";
+  paintCrumb();
 }
 
 // ------------------------------------------------------------------ controles
@@ -693,7 +700,8 @@ for (let p = 0; p < nPages; p++) {
   grp.className = "seg";
   for (const ind of INDICATORS.slice(p * PER_PAGE, (p + 1) * PER_PAGE)) {
     const b = document.createElement("button");
-    b.textContent = ind.name;
+    b.dataset.ind = ind.id;          // clave de traducción del nombre
+    b.textContent = t(ind.id, null, ind.name);
     b.title = ind.unit;
     b.setAttribute("aria-pressed", ind.id === state.indicator);
     b.addEventListener("click", () => {
@@ -710,7 +718,8 @@ for (let p = 0; p < nPages; p++) {
 
   const dot = document.createElement("button");
   dot.setAttribute("role", "tab");
-  dot.setAttribute("aria-label", `Página ${p + 1} de ${nPages}`);
+  dot.dataset.page = p + 1;
+  dot.setAttribute("aria-label", t("dots_page", { n: p + 1, total: nPages }));
   dot.setAttribute("aria-current", p === 0);
   dot.addEventListener("click", () => goToPage(p));
   dots.appendChild(dot);
@@ -742,7 +751,7 @@ const sep = document.getElementById("sep");
 const sepVal = document.getElementById("sep-val");
 sep.addEventListener("input", () => {
   state.separation = +sep.value;
-  sepVal.textContent = state.separation < 0.01 ? "volumen"
+  sepVal.textContent = state.separation < 0.01 ? t("val_volume")
                      : Math.round(sepFrac() * 100) + " %";
   queueRebuild();   // la separación reparte el paso: cambia el grosor de la losa
 });
@@ -751,7 +760,7 @@ const hgt = document.getElementById("height");
 const hgtVal = document.getElementById("height-val");
 hgt.addEventListener("input", () => {
   state.height = +hgt.value;
-  hgtVal.textContent = state.height < 1.05 ? "igual"
+  hgtVal.textContent = state.height < 1.05 ? t("val_equal")
                      : (+state.height.toFixed(1)) + " ×";
   queueRebuild();
 });
@@ -760,7 +769,7 @@ const opa = document.getElementById("opacity");
 const opaVal = document.getElementById("opacity-val");
 opa.addEventListener("input", () => {
   state.opacity = +opa.value;
-  opaVal.textContent = state.opacity >= 1 ? "opacas"
+  opaVal.textContent = state.opacity >= 1 ? t("val_opaque")
                      : Math.round((1 - state.opacity) * 100) + " %";
   applyOpacity();
 });
@@ -789,17 +798,19 @@ function applyTheme(name) {
   try { localStorage.setItem(THEME_KEY, name); } catch { /* modo privado */ }
 }
 
-[["dark", "Oscuro"], ["light", "Claro"]].forEach(([id, label]) => {
+[["dark", "theme_dark"], ["light", "theme_light"]].forEach(([id, key]) => {
   const b = document.createElement("button");
-  b.textContent = label;
+  b.dataset.i18n = key;            // setLang repinta su texto
+  b.textContent = t(key);
   b.dataset.theme = id;
   b.addEventListener("click", () => applyTheme(id));
   segTheme.appendChild(b);
 });
 
 // Con datos reales los extremos van de 0,2 m a 1 058 000 turistas, así que se
-// formatean en vez de volcarse crudos.
-const nf = new Intl.NumberFormat("es", { maximumSignificantDigits: 3 });
+// formatean en vez de volcarse crudos. El separador decimal y el de millares
+// dependen del idioma, así que el formateador se rehace al cambiarlo.
+let nf = new Intl.NumberFormat("es", { maximumSignificantDigits: 3 });
 
 function paintLegend() {
   const ind = INDICATORS.find(i => i.id === state.indicator);
@@ -810,6 +821,42 @@ function paintLegend() {
   document.getElementById("ramp-min").textContent = `${nf.format(lo)} ${ind.unit}`;
   document.getElementById("ramp-max").textContent = `${nf.format(hi)} ${ind.unit}`;
 }
+
+// ------------------------------------------------------------------ idioma
+// setLang repinta los nodos marcados con data-i18n en el HTML. Lo que genera
+// este archivo no lleva marca, así que se repinta aquí: nombres de indicador,
+// puntos del carrusel, valores de los sliders (que además son estado, no
+// plantilla) y el panel, que se rehace entero con recolor().
+const langSelect = document.getElementById("lang-select");
+for (const [id, label] of LANGS) {
+  const o = document.createElement("option");
+  o.value = id;
+  o.textContent = label;            // cada idioma en su propia lengua
+  langSelect.appendChild(o);
+}
+
+function applyLang(next) {
+  setLang(next, () => {
+    nf = new Intl.NumberFormat(next, { maximumSignificantDigits: 3 });
+
+    for (const b of carousel.querySelectorAll("button[data-ind]")) {
+      const ind = INDICATORS.find(i => i.id === b.dataset.ind);
+      b.textContent = t(ind.id, null, ind.name);
+    }
+    for (const d of dots.querySelectorAll("button"))
+      d.setAttribute("aria-label", t("dots_page", { n: d.dataset.page, total: nPages }));
+
+    sep.dispatchEvent(new Event("input"));
+    hgt.dispatchEvent(new Event("input"));
+    opa.dispatchEvent(new Event("input"));
+
+    paintCrumb();
+    recolor();                      // leyenda y panel
+  });
+  langSelect.value = next;
+}
+
+langSelect.addEventListener("change", e => applyLang(e.target.value));
 
 // ------------------------------------------------------------------ arranque
 function resize() {
@@ -827,8 +874,8 @@ resize();
   applyTheme(saved ?? (matchMedia("(prefers-color-scheme: light)").matches
     ? "light" : "dark"));
 }
-recolor();
+applyLang(initialLang());     // ya llama a recolor(), que pinta leyenda y panel
 requestAnimationFrame(animate);
 
 // hook de depuración (consola / pruebas automatizadas)
-window.__ps = { state, units, globe, camera, select };
+window.__ps = { state, units, globe, camera, select, applyLang };

@@ -137,6 +137,16 @@
   .carousel-dots button[aria-current="true"] { background: var(--lagoon); }
   .carousel-dots button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
+  #lang-select {
+    width: 100%; margin-top: 4px; padding: 6px 8px;
+    background: transparent; color: var(--ink); border: 1px solid var(--line);
+    font-family: var(--ui); font-size: 12px;
+  }
+  #lang-select:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
+  /* el desplegable nativo se pinta con los colores del sistema, no con los
+     nuestros: se le da el fondo del panel para que no salga blanco en oscuro */
+  #lang-select option { background: var(--abyss); color: var(--ink); }
+
   .slider-row { display: flex; align-items: center; gap: 10px; }
   .slider-row input[type="range"] { flex: 1; accent-color: var(--lagoon); }
   .slider-row .val { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); width: 6ch; }
@@ -235,60 +245,69 @@
 
 <div class="left-col">
   <aside class="story" aria-label="Narrativa">
-    <h2>Metodología y análisis</h2>
-    <p>Esta visualización representa los volúmenes climáticos marinos a lo
-       largo del Pacífico. Cada estrato extruido corresponde a una losa
-       temporal de datos acumulados sobre la ZEE (Zona Económica Exclusiva).</p>
-    <p>Los cambios en los patrones oceanográficos se reflejan según la escala
-       del indicador activo, permitiendo comparar visualmente las variaciones
-       anuales en la subregión.</p>
-    <p>Las series proceden de .STAT Explorer y cubren 2003–2026. Las cuatro
-       anomalías —temperatura marina y de superficie, nivel del mar y
-       precipitación— se pintan sobre una rampa divergente centrada en cero;
-       el resto de indicadores, sobre una rampa secuencial en su rango real.</p>
-    <p>Las ZEE por país son las oficiales de Marine Regions v12. Las
-       subregiones ONU M49 siguen disueltas de las pseudo-ZEE del prototipo.</p>
+    <h2 data-i18n="story_title">Metodología y análisis</h2>
+    <p data-i18n="story_p1">Esta visualización representa los volúmenes
+       climáticos marinos a lo largo del Pacífico. Cada estrato extruido
+       corresponde a una losa temporal de datos acumulados sobre la ZEE
+       (Zona Económica Exclusiva).</p>
+    <p data-i18n="story_p2">Los cambios en los patrones oceanográficos se
+       reflejan según la escala del indicador activo, permitiendo comparar
+       visualmente las variaciones anuales en la subregión.</p>
+    <p data-i18n="story_p3">Las series proceden de .STAT Explorer y cubren
+       2003–2026. Las cuatro anomalías —temperatura marina y de superficie,
+       nivel del mar y precipitación— se pintan sobre una rampa divergente
+       centrada en cero; el resto de indicadores, sobre una rampa secuencial
+       en su rango real.</p>
+    <p data-i18n="story_p4">Las ZEE por país son las oficiales de Marine
+       Regions v12. Las subregiones ONU M49 siguen disueltas de las
+       pseudo-ZEE del prototipo.</p>
   </aside>
 
   <div class="controls" role="group" aria-label="Controles de visualización">
     <div>
       <div class="carousel-head">
-        <label class="head" id="ind-label">Indicador</label>
+        <label class="head" id="ind-label" data-i18n="lbl_indicators">Indicadores</label>
         <div class="carousel-arrows">
-          <button class="carousel-arrow" id="carousel-prev" title="Indicadores anteriores" aria-label="Indicadores anteriores">◄</button>
-          <button class="carousel-arrow" id="carousel-next" title="Indicadores siguientes" aria-label="Indicadores siguientes">►</button>
+          <button class="carousel-arrow" id="carousel-prev" data-i18n-label="nav_prev" title="Indicadores anteriores" aria-label="Indicadores anteriores">◄</button>
+          <button class="carousel-arrow" id="carousel-next" data-i18n-label="nav_next" title="Indicadores siguientes" aria-label="Indicadores siguientes">►</button>
         </div>
       </div>
       <div class="carousel" id="carousel" role="group" aria-labelledby="ind-label"></div>
       <div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Páginas de indicadores"></div>
     </div>
     <div>
-      <label class="head" for="height">Altura del seleccionado</label>
+      <label class="head" for="height" data-i18n="lbl_height">Altura del seleccionado</label>
       <div class="slider-row">
         <input id="height" type="range" min="1" max="10" step="0.1" value="3" />
         <span class="val" id="height-val">3 ×</span>
       </div>
     </div>
     <div>
-      <label class="head" for="sep">Separación de estratos</label>
+      <label class="head" for="sep" data-i18n="lbl_sep">Separación de estratos</label>
       <div class="slider-row">
         <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
         <span class="val" id="sep-val">volumen</span>
       </div>
     </div>
     <div>
-      <label class="head" for="opacity">Transparencia de capas</label>
+      <label class="head" for="opacity" data-i18n="lbl_opacity">Transparencia de capas</label>
       <div class="slider-row">
         <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
         <span class="val" id="opacity-val">opacas</span>
       </div>
     </div>
     <div>
-      <label class="head" for="seg-theme">Tema</label>
+      <label class="head" for="seg-theme" data-i18n="lbl_theme">Tema</label>
       <div class="seg" id="seg-theme" role="group"></div>
     </div>
+    <div>
+      <label class="head" for="lang-select" data-i18n="lbl_lang">Idioma</label>
+      <!-- las opciones las genera main.js desde LANGS, para que la lista no
+           se desincronice del diccionario -->
+      <select id="lang-select"></select>
+    </div>
     <div class="legend">
-      <label class="head">Escala</label>
+      <label class="head" data-i18n="lbl_scale">Escala</label>
       <div class="ramp" id="ramp"></div>
       <div class="ramp-labels"><span id="ramp-min"></span><span id="ramp-max"></span></div>
     </div>
@@ -301,15 +320,15 @@
   <div class="stripes" id="p-stripes" aria-hidden="true"></div>
   <div class="readout" id="p-readout"></div>
   <p class="note" id="p-note"></p>
-  <button class="drill" id="p-drill" hidden>Ver países de la subregión →</button>
+  <button class="drill" id="p-drill" hidden data-i18n="btn_drill">Ver países de la subregión →</button>
 </aside>
 
-<button class="north" id="north-btn" title="Poner los meridianos verticales">⊕ alinear norte</button>
+<button class="north" id="north-btn" data-i18n-title="title_north" data-i18n="btn_north" title="Poner los meridianos verticales">⊕ alinear norte</button>
 <div class="hint">
-  clic — separar estratos · clic fuera / Esc — soltar<br />
-  arrastrar — girar · clic central — mover · rueda — acercar
+  <span data-i18n="hint1">clic — separar estratos · clic fuera / Esc — soltar</span><br />
+  <span data-i18n="hint2">arrastrar — girar · clic central — mover · rueda — acercar</span>
 </div>
-<div class="syn-badge">datos .STAT 2003–2026 · ZEE oficial por país · subregiones sobre pseudo-ZEE</div>
+<div class="syn-badge" data-i18n="badge">datos .STAT 2003–2026 · ZEE oficial por país · subregiones sobre pseudo-ZEE</div>
 
 <script type="importmap">
 {
