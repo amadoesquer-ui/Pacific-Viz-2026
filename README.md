@@ -1,8 +1,10 @@
 # Pacific Strata — prototipo
 
-Globo 3D inclinado con las pseudo-ZEE del Pacífico extruidas como pilas de
-estratos anuales: **grosor uniforme por año, color por valor** (inspiración:
-climate stripes). Al hacer clic, la pila crece (la capa base queda pegada al
+Globo 3D inclinado con las ZEE del Pacífico extruidas como pilas de estratos
+anuales: **grosor uniforme por año, color por valor** (inspiración: climate
+stripes). **13 indicadores reales** de .STAT Explorer, 2003–2026, sobre las
+**ZEE oficiales** de Marine Regions v12. Interfaz en **español, inglés y
+francés**. Al hacer clic, la pila crece (la capa base queda pegada al
 globo) y dos controles independientes la gobiernan:
 
 - **«Altura del seleccionado»** — cuánto mide la pila, como múltiplo de las no
@@ -17,11 +19,13 @@ globo) y dos controles independientes la gobiernan:
 ```
 pacific-strata/
 ├─ data_prep/
-│  ├─ prepare_geometries.py   # Natural Earth → pseudo-ZEE (regiones, países, tierra)
-│  └─ generate_data.py        # dataset sintético (2 indicadores × N años)
+│  ├─ prepare_geometries.py   # Natural Earth + World EEZ v12 → regiones, países, tierra
+│  ├─ generate_data.py        # 13 CSV de .STAT Explorer → dataset.json
+│  └─ *.csv                   # series descargadas de .STAT Explorer
 └─ web/
    ├─ index.html
    ├─ main.js
+   ├─ i18n.js                 # diccionario ES/EN/FR y motor de traducción
    └─ data/                   # salidas generadas (incluidas ya en esta entrega)
 ```
 
@@ -46,7 +50,7 @@ Para mandarlo por correo o enseñarlo sin internet ni servidor:
 
 ```powershell
 node tools\build_standalone.mjs
-# → dist\pacific-strata.html  (~1.8 MB), se abre con doble clic
+# → dist\pacific-strata.html  (~2.3 MB), se abre con doble clic
 ```
 
 Es el único paso: se ejecuta sobre `web/` tal cual está, así que basta con
@@ -54,8 +58,8 @@ volver a lanzarlo cada vez que toques `main.js`, `index.html` o los datos.
 La primera vez descarga las dependencias (~1 s); después tira de `.cache/` y
 tarda ~0,1 s, sin red.
 
-Incrusta three.js, la librería de geometría, los cinco JSON y las tipografías
-(subset `latin`, suficiente para el interfaz en español). Verificado abriéndolo
+Incrusta three.js, la librería de geometría, `i18n.js`, los cinco JSON y las
+tipografías (subset `latin`, suficiente para los tres idiomas del interfaz). Verificado abriéndolo
 por `file://` con la red del navegador cortada: cero peticiones externas.
 
 El generador **no toca `web/`** ni añade un paso de compilación al proyecto: el
@@ -82,12 +86,15 @@ python data_prep\prepare_geometries.py ne10.geojson
 # 2) Mapa base de continentes (Natural Earth 110m, dominio público)
 curl.exe -L -o web\data\world.json https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson
 
-# 3) Dataset sintético — 10 años por defecto (440 + 60 puntos)
+# 3) Dataset a partir de los CSV de .STAT Explorer que hay en data_prep/
+#    (24 años por defecto; toma los más recientes de los que haya datos)
 python data_prep\generate_data.py
-
-# Para evaluar la lectura tipo "stripes" con series largas:
-python data_prep\generate_data.py --years 24
+python data_prep\generate_data.py --years 10   # series más cortas
 ```
+
+Las geometrías necesitan además `World_EEZ_v12.geojson` de
+[Marine Regions](https://www.marineregions.org/eez.php) (CC-BY, **requiere
+atribución**), que no se incluye en el repo por tamaño.
 
 ## Interacción
 
@@ -105,17 +112,28 @@ python data_prep\generate_data.py --years 24
 | Slider «Separación» | solo la pila seleccionada; hueco entre losas, 0 % (volumen macizo) – 85 % del paso, sin alterar la altura total |
 | Selector «Tema» | claro / oscuro; repinta interfaz y escena 3D y recuerda la preferencia (`localStorage`; por defecto, la del sistema) |
 | Slider «Transparencia» | **todas** las pilas; permite ver los estratos interiores, el mapa y las pilas de detrás |
+| Flechas / puntos «Indicadores» | pasar páginas del carrusel; 13 indicadores de 3 en 3 |
+| Selector «Idioma» | español / inglés / francés; recuerda la preferencia (`localStorage`; por defecto, la del navegador) |
+| Cursor sobre una franja o fila del panel | aísla ese año en la pila: se abre un hueco a ambos lados y se atenúan las demás franjas |
 | (sin selección) | todas las pilas: volúmenes macizos de altura `STACK_T` (grosor de losa completo, `THICK_MIN`) |
 
 ## Decisiones y límites del prototipo
 
-- **Pseudo-ZEE**: buffers de ~200 mn sobre Natural Earth como *placeholder*
-  visual, recortados con una **partición tipo Thiessen/Voronoi** (celdas de
-  "costa más cercana", sembradas a lo largo de los litorales): en cada punto
-  del mar hay un solo polígono, sin traslapes — equidistancia, como las ZEE
-  reales. En producción se sustituyen por **Marine Regions World EEZ v12**
-  (CC-BY, requiere atribución) pasando por el mismo pipeline: disolver por
-  país y subregión ONU M49 → partir en el antimeridiano → simplificar.
+- **ZEE**: el nivel país usa las **ZEE oficiales de Marine Regions World EEZ
+  v12** (CC-BY, requiere atribución), ya delimitadas entre vecinos por derecho
+  internacional. El nivel **subregión sigue disuelto de las pseudo-ZEE** del
+  prototipo (buffers de ~200 mn recortados con una partición tipo
+  Thiessen/Voronoi): `regions.json` está pendiente de regenerar desde la misma
+  fuente que `countries.json`.
+- **Dos rampas**: solo 4 de los 13 indicadores se leen contra un cero con
+  significado (anomalías de temperatura marina y de superficie, nivel del mar y
+  precipitación) y van sobre una **divergente** RdBu con dominio simétrico. Los
+  otros 9 solo crecen y van sobre una **secuencial** viridis en su rango real:
+  con la divergente quedaban todos en la mitad cálida y la leyenda anunciaba un
+  mínimo negativo inexistente.
+- **Cobertura desigual**: los CSV de .STAT no cubren todos los países en todos
+  los indicadores. Las series ausentes se saltan y el panel muestra «—»; los
+  huecos internos de una serie se rellenan con el último valor válido.
 - **Antimeridiano**: todo el wrangling se hace en longitudes 0–360 y se parte
   en lon=180 al exportar, como recomienda `three-conic-polygon-geometry`.
 - **Mapa base**: las siluetas de tierra (continentes de Natural Earth 110m en
@@ -131,7 +149,11 @@ python data_prep\generate_data.py --years 24
   levantar/separar anima `mesh.scale` (un escalado uniforme equivale a un
   desplazamiento radial con engrosamiento < 12 %, imperceptible). Con esto el
   costo por frame es ~0 y el prototipo va sobrado incluso en móvil.
-- **Valores regionales** = media simple de los países (declarado en el panel);
-  en producción decidir ponderación (área ZEE, población…) y declararla.
-- Con `--years 24`, si notas carga inicial lenta, baja `CURV.region` de 2.0 a
-  3.0 en `main.js` (menos triángulos por losa).
+- **Valores regionales** = media simple de los países **con dato** (declarado
+  en el panel); en producción decidir ponderación (área ZEE, población…) y
+  declararla.
+- **Traducciones**: `web/i18n.js` tiene 44 claves × 3 idiomas. Las claves de
+  indicador son el `id` del dataset, así que un indicador nuevo sin traducir
+  cae al `name` que trae el JSON en vez de romper el interfaz.
+- Con 24 años, si notas carga inicial lenta, baja `CURV.region` de 2.0 a 3.0 en
+  `main.js` (menos triángulos por losa).
