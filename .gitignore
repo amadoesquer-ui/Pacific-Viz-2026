@@ -7,3 +7,6 @@ __pycache__/
 # salida y descargas del generador del HTML autocontenido
 dist/
 .cache/
+
+# dependencias de desarrollo (playwright, puppeteer)
+node_modules/
