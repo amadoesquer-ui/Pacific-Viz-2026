@@ -101,6 +101,42 @@
   .seg button[aria-pressed="true"] { background: var(--lagoon-soft); color: var(--lagoon); }
   .seg button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
 
+  /* ------- carrusel de indicadores -------
+     13 indicadores no caben en una fila de botones: se paginan de 3 en 3 en
+     páginas con scroll-snap, con flechas y puntos. Las páginas las genera
+     main.js a partir de INDICATORS, así que el número de puntos no puede
+     desincronizarse del de indicadores. */
+  .carousel-head { display: flex; align-items: center; justify-content: space-between; }
+  .carousel-arrows { display: flex; gap: 4px; }
+  .carousel-arrow {
+    all: unset; cursor: pointer; padding: 2px 7px; line-height: 1;
+    font-size: 11px; color: var(--ink-dim); border: 1px solid var(--line);
+  }
+  .carousel-arrow:hover:not(:disabled) { color: var(--lagoon); border-color: var(--lagoon); }
+  .carousel-arrow:disabled { opacity: .3; cursor: default; }
+  .carousel-arrow:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 1px; }
+
+  .carousel {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .carousel::-webkit-scrollbar { display: none; }
+  .carousel-page {
+    flex: 0 0 100%; scroll-snap-align: start;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .carousel-page .seg { flex-direction: column; }
+  .carousel-page .seg button { text-align: left; }
+  .carousel-page .seg button + button { border-top: 1px solid var(--line); }
+
+  .carousel-dots { display: flex; justify-content: center; gap: 5px; margin-top: 8px; }
+  .carousel-dots button {
+    all: unset; cursor: pointer; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--line);
+  }
+  .carousel-dots button[aria-current="true"] { background: var(--lagoon); }
+  .carousel-dots button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+
   .slider-row { display: flex; align-items: center; gap: 10px; }
   .slider-row input[type="range"] { flex: 1; accent-color: var(--lagoon); }
   .slider-row .val { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); width: 6ch; }
@@ -208,8 +244,15 @@
 
   <div class="controls" role="group" aria-label="Controles de visualización">
     <div>
-      <label class="head" for="seg-ind">Indicador</label>
-      <div class="seg" id="seg-ind" role="group"></div>
+      <div class="carousel-head">
+        <label class="head" id="ind-label">Indicador</label>
+        <div class="carousel-arrows">
+          <button class="carousel-arrow" id="carousel-prev" title="Indicadores anteriores" aria-label="Indicadores anteriores">◄</button>
+          <button class="carousel-arrow" id="carousel-next" title="Indicadores siguientes" aria-label="Indicadores siguientes">►</button>
+        </div>
+      </div>
+      <div class="carousel" id="carousel" role="group" aria-labelledby="ind-label"></div>
+      <div class="carousel-dots" id="carousel-dots" role="tablist" aria-label="Páginas de indicadores"></div>
     </div>
     <div>
       <label class="head" for="height">Altura del seleccionado</label>

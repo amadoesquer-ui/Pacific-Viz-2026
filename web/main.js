@@ -620,19 +620,68 @@ function exitRegion() {
 }
 
 // ------------------------------------------------------------------ controles
-const seg = document.getElementById("seg-ind");
-INDICATORS.forEach(ind => {
-  const b = document.createElement("button");
-  b.textContent = ind.name;
-  b.setAttribute("aria-pressed", ind.id === state.indicator);
-  b.addEventListener("click", () => {
-    state.indicator = ind.id;
-    seg.querySelectorAll("button").forEach(x =>
-      x.setAttribute("aria-pressed", x === b));
-    recolor();
-  });
-  seg.appendChild(b);
-});
+// -------- carrusel de indicadores. Con 13 indicadores la fila de botones ya
+// no cabe en el panel, así que se paginan de PER_PAGE en PER_PAGE. Las páginas
+// y los puntos se generan aquí desde INDICATORS: así el número de puntos no
+// puede desincronizarse del de indicadores al añadir uno.
+const PER_PAGE = 3;
+const carousel = document.getElementById("carousel");
+const dots = document.getElementById("carousel-dots");
+const prevBtn = document.getElementById("carousel-prev");
+const nextBtn = document.getElementById("carousel-next");
+const nPages = Math.ceil(INDICATORS.length / PER_PAGE);
+
+for (let p = 0; p < nPages; p++) {
+  const page = document.createElement("div");
+  page.className = "carousel-page";
+  const grp = document.createElement("div");
+  grp.className = "seg";
+  for (const ind of INDICATORS.slice(p * PER_PAGE, (p + 1) * PER_PAGE)) {
+    const b = document.createElement("button");
+    b.textContent = ind.name;
+    b.title = ind.unit;
+    b.setAttribute("aria-pressed", ind.id === state.indicator);
+    b.addEventListener("click", () => {
+      if (state.indicator === ind.id) return;
+      state.indicator = ind.id;
+      carousel.querySelectorAll("button").forEach(x =>
+        x.setAttribute("aria-pressed", x === b));
+      recolor();
+    });
+    grp.appendChild(b);
+  }
+  page.appendChild(grp);
+  carousel.appendChild(page);
+
+  const dot = document.createElement("button");
+  dot.setAttribute("role", "tab");
+  dot.setAttribute("aria-label", `Página ${p + 1} de ${nPages}`);
+  dot.setAttribute("aria-current", p === 0);
+  dot.addEventListener("click", () => goToPage(p));
+  dots.appendChild(dot);
+}
+
+// La página se deduce del scroll en vez de llevarse en una variable aparte:
+// el contenedor también se desplaza arrastrando o con la rueda, y así flechas
+// y puntos siguen contando lo mismo que se ve.
+const pageOf = () => Math.round(carousel.scrollLeft / carousel.clientWidth);
+
+function goToPage(p) {
+  carousel.scrollTo({ left: p * carousel.clientWidth, behavior: "smooth" });
+}
+
+function syncCarousel() {
+  const p = pageOf();
+  dots.querySelectorAll("button").forEach((d, i) =>
+    d.setAttribute("aria-current", i === p));
+  prevBtn.disabled = p <= 0;
+  nextBtn.disabled = p >= nPages - 1;
+}
+
+prevBtn.addEventListener("click", () => goToPage(pageOf() - 1));
+nextBtn.addEventListener("click", () => goToPage(pageOf() + 1));
+carousel.addEventListener("scroll", syncCarousel, { passive: true });
+syncCarousel();
 
 const sep = document.getElementById("sep");
 const sepVal = document.getElementById("sep-val");
@@ -713,6 +762,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  syncCarousel();      // la página se deduce de clientWidth, que acaba de cambiar
 }
 addEventListener("resize", resize);
 resize();
