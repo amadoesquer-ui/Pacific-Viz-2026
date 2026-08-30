@@ -62,6 +62,7 @@ const state = {
   regionId: null,           // subregión activa en nivel país
   indicator: null,          // id del indicador
   selected: null,           // unit seleccionada (objeto unit)
+  hoveredYear: null,        // índice del año bajo el cursor, en el panel
   separation: 0,            // 0 volumen … 1 estratos (reparte, no añade altura)
   height: H_DEF,            // altura del seleccionado, × la de los no seleccionados
   opacity: 1,               // opacidad de las losas (1 = opacas)
@@ -374,14 +375,21 @@ function applyOpacity() {
   }
 }
 
+// Con una unidad seleccionada, el resto se atenúa: con 22 pilas encima de las
+// ZEE oficiales, la seleccionada se perdía entre las vecinas. Es un cambio de
+// luminosidad, no de tono, así que la posición en la rampa se sigue leyendo.
+const DIM = 0.35;
+
 function recolor() {
   const dom = state.domain[state.indicator];
   for (const level of ["region", "country"]) {
     for (const u of units[level]) {
       const series = dataset.values[u.id]?.[state.indicator];
       if (!series) continue;           // .STAT no cubre todos los indicadores
+      const dim = state.selected && state.selected !== u;
       u.slabs.forEach((s, i) => {
         const c = colorFor(series[i], dom);
+        if (dim) c.multiplyScalar(DIM);
         for (const m of s.meshes) m.material.color.copy(c);
       });
     }
@@ -396,6 +404,26 @@ function recolor() {
 // solo se abren los estratos superiores. La separación del slider aplica
 // SOLO a la seleccionada; el resto queda con separación 0 (cada losa en su
 // punto de extrusión).
+// -------- año bajo el cursor. Al pasar por una franja o una fila del panel se
+// abre un hueco alrededor de esa losa en la pila seleccionada, para poder
+// aislarla visualmente sin perder el contexto de la serie.
+//
+// El hueco se reparte en dos: todo lo que está de la losa hacia arriba sube
+// PAD (abre por debajo) y todo lo estrictamente superior sube otro PAD (abre
+// por encima). Así la losa destacada queda flotando entre dos huecos iguales
+// sin que ninguna baje —que la hundiría dentro del globo— y sin romper el
+// anclaje de la base. El caso h = 0 se trata aparte por eso mismo: si subiera
+// «de la base hacia arriba», la base dejaría de estar pegada al globo.
+const HOVER_PAD = 1.6;                 // en unidades de radio, ~1 losa base
+const HOVER_EMISSIVE = 0x6b5a20;       // realce contenido: marca la losa sin
+                                       // lavarle el color con el que se lee
+
+function padFor(i, h) {
+  if (h === null) return 0;
+  if (h === 0) return i > 0 ? HOVER_PAD : 0;
+  return (i >= h ? HOVER_PAD : 0) + (i > h ? HOVER_PAD : 0);
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
 
@@ -407,19 +435,25 @@ function animate(now) {
     }
   }
 
-  // Sin resaltado por color: la pila seleccionada se distingue por su altura,
-  // y teñirla falseaba la lectura de la rampa (el emisivo desaturaba el color
-  // del dato, que es justo lo que hay que comparar contra la leyenda).
+  // Sin resaltado por color de la pila entera: la seleccionada se distingue por
+  // su altura, y teñirla falseaba la lectura de la rampa (el emisivo desaturaba
+  // el color del dato, que es justo lo que hay que comparar contra la leyenda).
+  // El único emisivo es el del año bajo el cursor, y es transitorio.
   for (const level of ["region", "country"]) {
     for (const u of units[level]) {
       if (!u.group.visible) continue;
       const gap = gapOf(u);
+      const isSel = state.selected === u;
+      const h = isSel ? state.hoveredYear : null;
       for (const s of u.slabs) {
-        const target = (s.r0 + s.yearIndex * gap) / s.r0;
+        const i = s.yearIndex;
+        const target = (s.r0 + i * gap + padFor(i, h)) / s.r0;
+        const lit = h === i;
         for (const m of s.meshes) {
           const cur = m.scale.x;
           const next = REDUCED ? target : lerp(cur, target, 0.14);
           m.scale.setScalar(Math.abs(next - target) < 1e-4 ? target : next);
+          m.material.emissive.setHex(lit ? HOVER_EMISSIVE : 0x000000);
         }
       }
     }
@@ -545,12 +579,25 @@ const crumb = document.getElementById("crumb");
 function select(u) {
   const prev = state.selected;
   state.selected = u;
+  state.hoveredYear = null;
   // el grosor del slider solo aplica a la selección: reconstruir la que
   // sale (vuelve a THICK_MIN) y la que entra (toma el valor del slider)
   if (prev && prev !== u) rebuildUnit(prev);
   if (u && u !== prev) rebuildUnit(u);
   panel.classList.toggle("open", !!u);
-  if (u) fillPanel(u);
+  recolor();            // cambia qué pilas van atenuadas; ya rellena el panel
+}
+
+// El año destacado vive en dos sitios a la vez: la losa del globo (la mueve y
+// la ilumina animate) y la franja y la fila del panel (clase .active).
+function setHoveredYear(i) {
+  state.hoveredYear = i;
+  const stripes = document.getElementById("p-stripes");
+  stripes.classList.toggle("has-active", i !== null);
+  stripes.querySelectorAll("div").forEach((d, k) =>
+    d.classList.toggle("active", k === i));
+  document.querySelectorAll("#p-readout .row").forEach((r, k) =>
+    r.classList.toggle("active", k === i));
 }
 
 function fillPanel(u) {
@@ -568,6 +615,8 @@ function fillPanel(u) {
     const d = document.createElement("div");
     d.style.background = "#" + colorFor(v, dom).getHexString();
     d.title = `${YEARS[i]}: ${nf.format(v)} ${ind.unit}`;
+    d.addEventListener("mouseenter", () => setHoveredYear(i));
+    d.addEventListener("mouseleave", () => setHoveredYear(null));
     stripes.appendChild(d);
   });
 
@@ -579,6 +628,8 @@ function fillPanel(u) {
     const v = series[i];
     row.innerHTML = `<span class="y">${y}</span><span>${
       v === undefined ? "—" : `${nf.format(v)} ${ind.unit}`}</span>`;
+    row.addEventListener("mouseenter", () => setHoveredYear(i));
+    row.addEventListener("mouseleave", () => setHoveredYear(null));
     ro.appendChild(row);
   });
 
@@ -588,6 +639,10 @@ function fillPanel(u) {
     u.level === "region"
       ? `Agregación: ${dataset.meta.aggregation}, sobre pseudo-ZEE.`
       : "ZEE oficial (Marine Regions v12).";
+
+  // fillPanel reconstruye franjas y filas, así que el año destacado se vuelve
+  // a marcar (p. ej. al cambiar de indicador con el cursor sobre una franja)
+  if (state.hoveredYear !== null) setHoveredYear(state.hoveredYear);
   drillBtn.hidden = u.level !== "region";
 }
 

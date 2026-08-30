@@ -170,7 +170,15 @@
   }
   .readout .row .y { color: var(--ink-dim); }
   .stripes { display: flex; height: 26px; margin: 12px 0 4px; border: 1px solid var(--line); }
-  .stripes div { flex: 1; }
+  .stripes div { flex: 1; cursor: pointer; }
+
+  /* ------- año bajo el cursor -------
+     El resto de franjas se atenúa en vez de resaltar la activa: así el año
+     señalado conserva exactamente el color con el que se lee la rampa. */
+  .stripes.has-active div { opacity: .35; transition: opacity .12s; }
+  .stripes.has-active div.active { opacity: 1; outline: 1px solid var(--ink); outline-offset: -1px; }
+  .readout .row.active { color: var(--lagoon); }
+  .readout .row.active .y { color: var(--lagoon); }
   .note { font-size: 10.5px; color: var(--ink-dim); margin-top: 10px; line-height: 1.45; }
   #panel .drill {
     all: unset; cursor: pointer; display: block; margin-top: 14px;
