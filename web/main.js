@@ -104,7 +104,11 @@ placeCamera();
 // Sin OrbitControls: arrastrar gira el PROPIO globo (libre, ambos ejes);
 // el botón «alinear norte» endereza el eje N-S; el botón central / dos
 // dedos lo desplazan y la rueda hace zoom moviendo la cámara.
-const ZOOM_MAX = 650;
+// Hasta dónde se puede alejar. Sube de 650 porque el ajuste inicial en un
+// teléfono lo alcanzaba: en vertical el campo útil es el horizontal, que es
+// estrecho, y meter todo el Pacífico exige más distancia. Al topar, la vista de
+// arranque dejaba Polinesia cortada por el borde.
+const ZOOM_MAX = 1100;
 // Lo cerca que se puede llegar no es una constante: depende de cuánto
 // sobresalga la pila más alta. El tope fijo de 150 dejaba las capas
 // demasiado lejos para mirarlas de canto contra el horizonte, que es una de
@@ -756,13 +760,29 @@ function rotateGlobe(dx, dy) {
   globe.quaternion.premultiply(_q.setFromAxisAngle(_right, dy * k));
 }
 
-function panGlobe(dx, dy) {
-  // unidades de mundo por pixel a la distancia actual de la cámara
-  const k = 2 * camera.position.length() * Math.tan(camera.fov * Math.PI / 360)
-          / canvas.clientHeight;
+// `profundidad` es la distancia a la que se quiere que la conversión de
+// píxeles a unidades de mundo sea exacta. Por omisión, el centro del globo,
+// que es lo que vale para arrastrar. El zoom anclado pasa la del punto que
+// tiene bajo el dedo: ese punto está más cerca de la cámara que el centro
+// —hasta un radio entero—, y usar la del centro corregía de más y el punto se
+// escapaba en vez de quedarse quieto.
+const _adelante = new THREE.Vector3();
+
+function panGlobe(dx, dy, profundidad) {
+  const d = profundidad ?? camera.position.distanceTo(globe.position);
+  const k = 2 * d * Math.tan(camera.fov * Math.PI / 360) / canvas.clientHeight;
   _right.setFromMatrixColumn(camera.matrixWorld, 0);
   _up.setFromMatrixColumn(camera.matrixWorld, 1);
   globe.position.addScaledVector(_right, dx * k).addScaledVector(_up, -dy * k);
+}
+
+// Profundidad de un punto local: su distancia a la cámara medida sobre el eje
+// de visión, que es la que gobierna la escala en perspectiva.
+function profundidadDe(local) {
+  _pmundo.copy(local);
+  globe.localToWorld(_pmundo).sub(camera.position);
+  camera.getWorldDirection(_adelante);
+  return Math.max(1, _pmundo.dot(_adelante));
 }
 
 document.getElementById("north-btn").addEventListener("click", () => {
@@ -855,8 +875,10 @@ canvas.addEventListener("pointermove", e => {
     const ahora = dosDedos();
     if (pinch) {
       panGlobe(ahora.cx - pinch.cx, ahora.cy - pinch.cy);
-      // el factor es la razón de distancias: separar los dedos acerca
-      if (pinch.dist > 8 && ahora.dist > 8) zoomPor(pinch.dist / ahora.dist);
+      // el factor es la razón de distancias: separar los dedos acerca, y el
+      // punto medio entre los dedos es el que se queda quieto
+      if (pinch.dist > 8 && ahora.dist > 8)
+        zoomPor(pinch.dist / ahora.dist, ahora.cx, ahora.cy);
     }
     pinch = ahora;
     return;
@@ -891,7 +913,41 @@ function ponerFov(grados) {
   return consumido;
 }
 
-function zoomPor(factor) {
+// Punto del globo que hay bajo el puntero, en coordenadas LOCALES del globo:
+// así sigue siendo el mismo punto después de girar o desplazar. Si el rayo
+// pasa de largo —se apunta al vacío alrededor del globo— se usa el punto del
+// rayo más cercano al centro, que deja el gesto igual de estable sin tener que
+// tratar ese caso aparte.
+const _esfera = new THREE.Sphere();
+const _pmundo = new THREE.Vector3();
+
+function puntoLocalBajo(px, py) {
+  const rect = canvas.getBoundingClientRect();
+  ptr.set(((px - rect.left) / rect.width) * 2 - 1,
+          -((py - rect.top) / rect.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  _esfera.set(globe.position, R);
+  const dentro = ray.ray.intersectSphere(_esfera, _pmundo);
+  if (!dentro) ray.ray.closestPointToPoint(globe.position, _pmundo);
+  return globe.worldToLocal(_pmundo.clone());
+}
+
+// Dónde cae un punto local en la pantalla, en píxeles.
+function aPantalla(local) {
+  _pmundo.copy(local);
+  globe.localToWorld(_pmundo).project(camera);
+  return { x: (_pmundo.x * 0.5 + 0.5) * canvas.clientWidth,
+           y: (-_pmundo.y * 0.5 + 0.5) * canvas.clientHeight };
+}
+
+// Zoom anclado: el punto que hay bajo los dedos —o bajo el cursor— se queda
+// donde estaba. Sin esto, el zoom siempre tira hacia el centro del globo y da
+// la sensación de que la vista «se escapa» de lo que estabas mirando.
+function zoomPor(factor, px, py) {
+  const anclado = px !== undefined;
+  const local = anclado ? puntoLocalBajo(px, py) : null;
+  const antes = anclado ? aPantalla(local) : null;
+
   if (factor < 1) {                       // acercar: primero el teleobjetivo
     const resto = factor / ponerFov(camera.fov * factor);
     if (resto < 0.999)
@@ -904,11 +960,21 @@ function zoomPor(factor) {
     const resto = factor * d / nuevoD;
     if (resto > 1.001) ponerFov(camera.fov * resto);
   }
+
+  if (!anclado) return;
+  // Dos pasadas: desplazar el globo mueve también el punto de anclaje, así que
+  // la primera corrección deja un resto pequeño que la segunda cierra.
+  camera.updateMatrixWorld();
+  for (let i = 0; i < 3; i++) {
+    const ahora = aPantalla(local);
+    panGlobe(antes.x - ahora.x, antes.y - ahora.y, profundidadDe(local));
+    globe.updateMatrixWorld();
+  }
 }
 
 canvas.addEventListener("wheel", e => {
   e.preventDefault();
-  zoomPor(Math.exp(e.deltaY * 0.001));
+  zoomPor(Math.exp(e.deltaY * 0.001), e.clientX, e.clientY);
 }, { passive: false });
 addEventListener("keydown", e => { if (e.key === "Escape") select(null); });
 
@@ -1557,6 +1623,51 @@ function applyLang(next) {
     b.setAttribute("aria-pressed", b.dataset.lang === next);
 }
 
+// -------- vista de arranque: los polígonos con datos, centrados y a la
+// distancia justa para que quepan.
+//
+// Antes la cámara se colocaba en unas coordenadas fijas y el globo sin girar,
+// y lo que quedaba de frente era el océano al norte de la Antártida. Ahora se
+// gira el globo para que la dirección media de las unidades mire a la cámara y
+// se busca la distancia mínima a la que todas caben.
+function encuadreInicial() {
+  const anclas = units.region.map(u => u.anchor).filter(Boolean);
+  if (!anclas.length) return;
+
+  // dirección media de las unidades, sobre la esfera unidad
+  const centro = new THREE.Vector3();
+  for (const [lat, lon] of anclas) centro.add(polar2Cartesian(lat, lon, 1));
+  if (centro.lengthSq() < 1e-9) return;         // repartidas por todo el globo
+  centro.normalize();
+
+  const haciaCamara = camera.position.clone().sub(globe.position).normalize();
+  globe.quaternion.setFromUnitVectors(centro, haciaCamara);
+
+  // cuánto se abre el conjunto desde ese centro
+  let alfaMax = 0;
+  for (const [lat, lon] of anclas)
+    alfaMax = Math.max(alfaMax, centro.angleTo(polar2Cartesian(lat, lon, 1)));
+
+  // El campo útil es el menor de los dos semiángulos: en un teléfono manda el
+  // horizontal, en un monitor el vertical. El 0,88 deja aire en los bordes.
+  const semiV = camera.fov * Math.PI / 360;
+  const semiH = Math.atan(Math.tan(semiV) * camera.aspect);
+  const semi = Math.min(semiV, semiH) * 0.88;
+
+  // Un punto a alfa del centro, sobre un radio Rt, se ve a
+  // atan2(Rt·sen alfa, d − Rt·cos alfa) del eje. Ese ángulo baja al crecer d,
+  // así que la distancia mínima que mete todo dentro sale por bisección.
+  const Rt = R + STACK_T * Math.max(state.height, 1);
+  let lo = zoomMin(), hi = ZOOM_MAX;
+  for (let i = 0; i < 40; i++) {
+    const d = (lo + hi) / 2;
+    const visto = Math.atan2(Rt * Math.sin(alfaMax), d - Rt * Math.cos(alfaMax));
+    if (visto > semi) lo = d; else hi = d;
+  }
+  camera.position.setLength(hi);
+  camera.lookAt(globe.position);
+}
+
 // ------------------------------------------------------------------ arranque
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -1583,6 +1694,7 @@ resize();
   applyTheme(saved ?? "light");
 }
 buildLabels();
+encuadreInicial();
 paintStory();
 openTab("tab-data");
 // Los dos paneles arrancan cerrados: lo primero que se ve es el globo entero,

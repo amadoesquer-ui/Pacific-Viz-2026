@@ -71,7 +71,14 @@ const grados = 2 * Math.acos(Math.min(1, dot)) * 180 / Math.PI;
 // ---- toque simple: selecciona, no se confunde con arrastre ----
 await page.evaluate(() => window.__ps.select(null));
 await page.waitForTimeout(400);
-await touch("touchStart", [{ x: cx, y: cy, id: 1 }]);
+// se apunta a una etiqueta y no al centro de la pantalla: la vista de arranque
+// encuadra los datos, así que el centro puede caer en mar abierto
+const blanco = await page.evaluate(() => {
+  const el = [...document.querySelectorAll("#labels div")].find(x => x.style.display !== "none");
+  return el ? { x: Math.round(parseFloat(el.style.left)),
+                y: Math.round(parseFloat(el.style.top)) } : { x: cx, y: cy };
+});
+await touch("touchStart", [{ x: blanco.x, y: blanco.y, id: 1 }]);
 await page.waitForTimeout(60);
 await touch("touchEnd", []);
 await page.waitForTimeout(800);
@@ -121,8 +128,13 @@ if (diana) {
 }
 
 // ---- pellizco: separar los dedos acerca, juntarlos aleja ----
-const dist = () => page.evaluate(() => window.__ps.camera.position.length());
-const d0 = await dist();
+// El zoom gasta primero el campo de visión, así que medir la distancia ya no
+// dice si amplió: se mide el aumento, que es lo que se ve.
+const aumento = () => page.evaluate(() => {
+  const c = window.__ps.camera;
+  return +(1 / (c.position.length() * Math.tan(c.fov * Math.PI / 360))).toFixed(6);
+});
+const d0 = await aumento();
 await touch("touchStart", [{ x: cx - 30, y: cy, id: 1 }, { x: cx + 30, y: cy, id: 2 }]);
 for (let i = 1; i <= 12; i++) {
   await touch("touchMove", [{ x: cx - 30 - i * 8, y: cy, id: 1 },
@@ -131,7 +143,7 @@ for (let i = 1; i <= 12; i++) {
 }
 await touch("touchEnd", []);
 await page.waitForTimeout(200);
-const d1 = await dist();
+const d1 = await aumento();
 
 const ta = await page.evaluate(() =>
   getComputedStyle(document.getElementById("scene")).touchAction);
@@ -141,11 +153,11 @@ console.log(`pointermove         : ${ev.move} de ${PASOS} · cancelaciones: ${ev
 console.log(`giro con un dedo    : ${grados.toFixed(1)}°`);
 console.log(`toque simple        : ${sel ?? "no seleccionó nada"}`);
 console.log(`dos dedos           : ${movido.toFixed(1)} unidades desplazado`);
-console.log(`pellizco            : cámara ${d0.toFixed(0)} → ${d1.toFixed(0)} (${d1 < d0 ? "acerca" : "NO acerca"})`);
+console.log(`pellizco            : aumento x${(d1 / d0).toFixed(2)} (${d1 > d0 ? "amplía" : "NO amplía"})`);
 console.log(`doble toque         : ${diana?.quien ?? "?"} · ${nivel0} → ${nivel1}`);
 
 const ok = ev.cancel === 0 && ev.move >= PASOS - 2 && grados > 20 && sel && movido > 1
-        && d1 < d0 - 5 && nivel1 === "country";
+        && d1 > d0 * 1.05 && nivel1 === "country";
 console.log(ok ? "\n  táctil correcto" : "\n  FALLO: el gesto no llega entero");
 
 await browser.close();
