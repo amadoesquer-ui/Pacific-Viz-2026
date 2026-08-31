@@ -74,14 +74,20 @@
     text-transform: uppercase; color: var(--ink);
   }
   .wordmark span { color: var(--lagoon); }
+  /* La miga crece a 14 px y su parte pulsable lleva borde y fondo propios: a
+     11 px y sin marco parecía una etiqueta y nadie descubría que se podía
+     volver por ahí. */
   .crumb {
-    margin-top: 6px; font-family: var(--mono); font-size: 11px;
+    margin-top: 8px; display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 14px;
     color: var(--ink-dim); pointer-events: auto;
   }
   .crumb button {
     all: unset; cursor: pointer; color: var(--lagoon);
+    padding: 4px 10px; border: 1px solid var(--lagoon);
+    font-family: var(--mono); font-size: 13px;
   }
-  .crumb button:hover, .crumb button:focus-visible { text-decoration: underline; }
+  .crumb button:hover { background: var(--lagoon-soft); }
   .crumb button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   /* ------- boton de idioma: arriba a la derecha, a la altura de la marca -------
@@ -107,8 +113,8 @@
      contenido, con un tope para que un paso largo del relato no invada la
      escena. */
   .story {
-    position: fixed; left: 22px; bottom: 20px; z-index: 6;
-    width: 300px; max-height: 46vh; display: flex; flex-direction: column;
+    position: fixed; left: 22px; top: 96px; z-index: 6;
+    width: 300px; max-height: 52vh; display: flex; flex-direction: column;
     padding: 16px 18px; border: 1px solid var(--line);
     background: var(--panel); backdrop-filter: blur(6px);
     transition: transform .3s ease, opacity .3s ease;
@@ -185,7 +191,9 @@
   }
   .restore:hover { background: var(--lagoon-soft); color: var(--lagoon); }
   .restore[hidden] { display: none; }
-  #show-story { left: 22px; }
+  /* el de la historia acompaña a su panel: arriba a la izquierda en escritorio,
+     donde ahora aparece; el de datos sigue abajo, con el suyo */
+  #show-story { left: 22px; top: 96px; bottom: auto; }
   #show-dock { right: 22px; }
 
   /* el de la historia va en su cabecera, en linea con el titulo */
@@ -307,6 +315,11 @@
   .drill:hover { background: var(--lagoon-soft); }
   .drill:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
   .drill[hidden] { display: none; }
+  /* La pista va pegada al botón porque es justo donde se mira cuando se quiere
+     bajar de nivel; suelta por la pantalla nadie la lee. */
+  .drill-row { display: flex; align-items: center; gap: 12px; }
+  .drill-hint { font-size: 11px; color: var(--ink-dim); }
+  .drill-hint[hidden] { display: none; }
 
   /* ------- pestana Controles: los sliders en rejilla ------- */
   .ctrl-grid {
@@ -446,7 +459,10 @@
 
     <!-- fuera de chart-wrap: al bajar a nivel país no hay nada seleccionado y
          la gráfica está oculta, pero el botón de volver tiene que seguir ahí -->
-    <button class="drill" id="p-drill" hidden></button>
+    <div class="drill-row">
+      <button class="drill" id="p-drill" hidden></button>
+      <span class="drill-hint" id="p-drill-hint" hidden></span>
+    </div>
   </div>
 
   <div class="pane" id="pane-ctrl" role="tabpanel" aria-labelledby="tab-ctrl" hidden>

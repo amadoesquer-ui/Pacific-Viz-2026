@@ -759,34 +759,86 @@ canvas.addEventListener("pointerdown", e => {
   if (e.button === 0 && pointers.size === 1) downAt = [e.clientX, e.clientY];
   canvas.setPointerCapture(e.pointerId);
 });
+// Doble activación: dos clics o dos toques seguidos sobre la MISMA unidad
+// bajan a sus países. Se detecta aquí y no con el evento `dblclick` porque ese
+// no llega de forma fiable desde el táctil, y así ratón y dedo comparten
+// exactamente el mismo camino y la misma ventana de tiempo.
+// 500 ms, la misma ventana que usan Windows y macOS para el doble clic. Con
+// 350 se quedaban fuera los dobles toques de dedo, que son más lentos que los
+// de ratón.
+const DOBLE_MS = 500;
+let ultimoClic = { unidad: null, t: 0 };
+
+function activar(u) {
+  const ahora = performance.now();
+  const doble = u && u === ultimoClic.unidad && ahora - ultimoClic.t < DOBLE_MS;
+  ultimoClic = { unidad: u, t: ahora };
+  if (doble && u.level === "region") { enterRegion(u.id); return; }
+  select(u);
+}
+
 canvas.addEventListener("pointerup", e => {
   pointers.delete(e.pointerId);
+  pinch = null;                        // se rompió el par de dedos
   if (e.button !== 0 || !downAt) return;
   const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
   downAt = null;
   if (moved > 6) return;               // fue arrastre, no clic
-  select(unitAt(e.clientX, e.clientY));
+  activar(unitAt(e.clientX, e.clientY));
 });
-canvas.addEventListener("pointercancel", e => pointers.delete(e.pointerId));
+canvas.addEventListener("pointercancel", e => {
+  pointers.delete(e.pointerId);
+  pinch = null;
+});
+
+// -------- dos dedos: mover y hacer zoom a la vez.
+// El desplazamiento del punto medio mueve el globo y la variación de la
+// distancia entre los dedos lo acerca o lo aleja, igual que la rueda. Van
+// juntos a propósito: al pellizcar los dedos casi nunca se quedan quietos, y
+// separar los dos gestos obligaría a un pulso imposible.
+let pinch = null;                      // { dist, cx, cy } del cuadro anterior
+
+const dosDedos = () => {
+  const [a, b] = [...pointers.values()];
+  return { dist: Math.hypot(b.x - a.x, b.y - a.y),
+           cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+};
+
 canvas.addEventListener("pointermove", e => {
   const p = pointers.get(e.pointerId);
-  if (p) {
-    const dx = e.clientX - p.x, dy = e.clientY - p.y;
-    p.x = e.clientX; p.y = e.clientY;
-    if (pointers.size >= 2) panGlobe(dx / 2, dy / 2);   // dos dedos: mover
-    else if (p.button === 1) panGlobe(dx, dy);          // botón central: mover
-    else { rotateGlobe(dx, dy); northTarget = null; }   // giro libre
-    canvas.style.cursor = "grabbing";
+  if (!p) {
+    // el cursor es toda la respuesta al hover: no se tiñe la geometría
+    canvas.style.cursor = unitAt(e.clientX, e.clientY) ? "pointer" : "grab";
     return;
   }
-  // el cursor es toda la respuesta al hover: no se tiñe la geometría
-  canvas.style.cursor = unitAt(e.clientX, e.clientY) ? "pointer" : "grab";
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  canvas.style.cursor = "grabbing";
+
+  if (pointers.size === 2) {
+    const ahora = dosDedos();
+    if (pinch) {
+      panGlobe(ahora.cx - pinch.cx, ahora.cy - pinch.cy);
+      // el factor es la razón de distancias: separar los dedos acerca
+      if (pinch.dist > 8 && ahora.dist > 8) zoomPor(pinch.dist / ahora.dist);
+    }
+    pinch = ahora;
+    return;
+  }
+  pinch = null;
+  if (p.button === 1) panGlobe(dx, dy);               // botón central: mover
+  else { rotateGlobe(dx, dy); northTarget = null; }   // giro libre
 });
+// la rueda y el pellizco acaban en el mismo sitio, para que los topes de zoom
+// sean los mismos por los dos caminos
+function zoomPor(factor) {
+  camera.position.setLength(THREE.MathUtils.clamp(
+    camera.position.length() * factor, ZOOM_MIN, ZOOM_MAX));
+}
+
 canvas.addEventListener("wheel", e => {
   e.preventDefault();
-  const len = THREE.MathUtils.clamp(
-    camera.position.length() * Math.exp(e.deltaY * 0.001), ZOOM_MIN, ZOOM_MAX);
-  camera.position.setLength(len);
+  zoomPor(Math.exp(e.deltaY * 0.001));
 }, { passive: false });
 addEventListener("keydown", e => { if (e.key === "Escape") select(null); });
 
@@ -819,16 +871,25 @@ function setHoveredYear(i) {
 // haya nada seleccionado —por eso vive fuera de la gráfica, que ahí está
 // oculta—, que era lo que faltaba: se podía entrar y no salir más que por la
 // miga de navegación.
+// «(hover: none)» distingue el dedo del ratón mejor que mirar el ancho: un
+// portátil con pantalla táctil tiene los dos, y lo que importa es qué gesto
+// nombrar en la pista.
+const SIN_RATON = matchMedia("(hover: none)").matches;
+const drillHint = document.getElementById("p-drill-hint");
+
 function paintDrill() {
   if (state.level === "country") {
     drillBtn.hidden = false;
     drillBtn.dataset.mode = "back";
     drillBtn.textContent = t("btn_drill_back");
+    drillHint.hidden = true;
     return;
   }
   drillBtn.dataset.mode = "drill";
   drillBtn.textContent = t("btn_drill");
   drillBtn.hidden = state.selected?.level !== "region";
+  drillHint.hidden = drillBtn.hidden;
+  drillHint.textContent = t(SIN_RATON ? "drill_hint_touch" : "drill_hint_mouse");
 }
 
 drillBtn.addEventListener("click", () => {
@@ -1285,7 +1346,15 @@ function applyLang(next) {
 // ------------------------------------------------------------------ arranque
 function resize() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false);
+  // updateStyle EN true (el valor por omisión): hay que dejar que three fije
+  // también el tamaño CSS del lienzo. Con false solo tocaba el búfer de
+  // dibujo, así que con devicePixelRatio 2 el atributo width quedaba en el
+  // doble; y un elemento reemplazado con inset:0 y width:auto usa su tamaño
+  // intrínseco, con lo que el lienzo medía 824 px CSS en una ventana de 412 y
+  // se salía de la pantalla. En el teléfono se veía un cuarto de la escena,
+  // las etiquetas caían fuera y el picking iba desplazado. En escritorio con
+  // densidad 1 coincidían los números y no se notaba.
+  renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   ajustarPaneles();    // al estrechar, los dos paneles pasan a competir por el sitio
