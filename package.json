@@ -1,0 +1,32 @@
+{
+  "name": "pacific-strata",
+  "version": "0.1.0",
+  "description": "Pacific Strata — prototipo de visualización 3D",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "smoke": "node tools/smoke.mjs",
+    "build": "node tools/build_standalone.mjs",
+    "smoke:touch": "node tools/smoke-touch.mjs",
+    "smoke:story": "node tools/smoke-story.mjs",
+    "smoke:tour": "node tools/smoke-tour.mjs",
+    "smoke:tour:movil": "node tools/smoke-tour.mjs --movil"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amadoesquer-ui/Pacific-Viz-2026.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/amadoesquer-ui/Pacific-Viz-2026/issues"
+  },
+  "homepage": "https://github.com/amadoesquer-ui/Pacific-Viz-2026#readme",
+  "private": "true",
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "puppeteer": "^25.9.0"
+  }
+}

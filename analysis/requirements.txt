@@ -1,0 +1,8 @@
+# Exploración de datos. numpy hace todo el cálculo estadístico:
+# Theil-Sen y Mann-Kendall van implementados a mano en el cuaderno, así que
+# NO hace falta scipy ni statsmodels (Spearman se calcula como Pearson sobre
+# rangos, que es su definición).
+numpy>=1.26
+pandas>=2.0
+matplotlib>=3.8
+jupyterlab>=4.0

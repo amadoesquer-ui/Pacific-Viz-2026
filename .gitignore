@@ -7,3 +7,17 @@ __pycache__/
 # salida y descargas del generador del HTML autocontenido
 dist/
 .cache/
+
+# dependencias de desarrollo (playwright, puppeteer)
+node_modules/
+
+# fuente de ZEE descargada de Marine Regions (354 MB, CC-BY): no va al repo
+World_EEZ_v12*/
+*.gpkg
+*.shp
+*.dbf
+*.shx
+
+# salidas regenerables del cuaderno de análisis
+analysis/salida/
+.ipynb_checkpoints/

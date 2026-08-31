@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pacific Strata — prototipo</title>
+<title>Pacific Data Strata — final submission PacificViz Challenge</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -19,6 +19,8 @@
     --lagoon-soft: rgba(86, 214, 194, 0.12);
     --sand: #f2d98d;
     --sand-line: rgba(242, 217, 141, 0.4);
+    --label-ink: #ffffff;
+    --label-halo: rgba(6, 13, 24, 0.95);
     --ui: "Archivo", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
     color-scheme: dark;
@@ -34,17 +36,33 @@
     --lagoon-soft: rgba(10, 125, 108, 0.14);
     --sand: #8a6a12;
     --sand-line: rgba(138, 106, 18, 0.45);
+    --label-ink: #0f1f2e;
+    --label-halo: rgba(255, 255, 255, 0.95);
     color-scheme: light;
   }
   * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; }
+  html, body { height: 100%; overscroll-behavior: none; }
   body {
     background: var(--abyss);
     color: var(--ink);
     font-family: var(--ui);
     overflow: hidden;
   }
-  #scene { position: fixed; inset: 0; display: block; }
+  /* touch-action: none es imprescindible, no cosmético. Sin él, al arrastrar
+     con el dedo el navegador considera el gesto candidato a desplazar o hacer
+     zoom en la página; en cuanto lo decide se queda con el toque, emite
+     pointercancel y deja de mandar pointermove. Medido: de 24 movimientos solo
+     llegaban 3 antes del cancel, y el globo giraba 5° y se paraba — había que
+     levantar el dedo y volver a empezar. Que el body no tenga scroll no basta:
+     la decisión del gesto es previa e independiente.
+     Se pone SOLO en el lienzo: el cintillo de indicadores y los paneles
+     necesitan conservar su desplazamiento táctil normal. */
+  #scene {
+    position: fixed; inset: 0; display: block;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;   /* nada de menú al mantener pulsado */
+  }
 
   /* ------- marca + miga ------- */
   header {
@@ -55,51 +73,387 @@
     font-weight: 800; letter-spacing: 0.34em; font-size: 13px;
     text-transform: uppercase; color: var(--ink);
   }
-  .wordmark span { color: var(--lagoon); }
+  /* DATA STRATA lleva una letra por estrato. Los colores NO son decorativos:
+     son el perfil real de Micronesia en anomalia de temperatura marina,
+     muestreado de 2003 a 2024 con la misma rampa divergente que pinta el
+     globo. El titulo es una columna del tablero puesta de lado: naranja
+     abajo, rojo oscuro arriba y los dos anos frios de enmedio (2008 y 2010)
+     rompiendo la serie. Si cambia la rampa, estos valores hay que rehacerlos.
+
+     Anadir un estrato nuevo aqui no vale: hay diez letras y diez muestras. */
+  .strata i { font-style: normal; }
+  .strata i:nth-child(1)  { color: #e58368; }   /* 2003  +0.41 */
+  .strata i:nth-child(2)  { color: #f2a17f; }   /* 2006  +0.29 */
+  .strata i:nth-child(3)  { color: #f6dcd1; }   /* 2008  +0.09  el mas frio */
+  .strata i:nth-child(4)  { color: #f5bba2; }   /* 2010  +0.20 */
+  .strata i:nth-child(5)  { color: #e6866a; }   /* 2013  +0.40 */
+  .strata i:nth-child(6)  { color: #e0775e; }   /* 2015  +0.46 */
+  .strata i:nth-child(7)  { color: #ce5046; }   /* 2017  +0.61 */
+  .strata i:nth-child(8)  { color: #cc4b43; }   /* 2019  +0.63 */
+  .strata i:nth-child(9)  { color: #ee9777; }   /* 2022  +0.33 */
+  .strata i:nth-child(10) { color: #b92632; }   /* 2024  +0.77  el mas calido */
+
+  /* Los estratos claros (2008, 2010) casi desaparecen sobre el fondo claro, y
+     los rojos oscuros sobre el oscuro: son colores de DATO, elegidos para
+     leerse contra el oceano y no contra el interfaz, asi que aqui hay que
+     sostenerlos en vez de retocarlos.
+     El halo va en dos capas y no en una: un reborde de 1px que define el trazo
+     de la letra —con 800 de grosor basta para leerla— y un resplandor de 5px
+     que la despega del fondo. Con una sola capa difusa, el estrato de 2008
+     (+0.09 °C, casi blanco) seguia sin verse sobre el tema claro. */
+  .strata i {
+    text-shadow: 0 0 1px rgba(255, 255, 255, .85), 0 0 5px rgba(255, 255, 255, .45);
+  }
+  :root[data-theme="light"] .strata i {
+    text-shadow: 0 0 1px rgba(8, 22, 38, .85), 0 0 5px rgba(8, 22, 38, .40);
+  }
+  /* La miga crece a 14 px y su parte pulsable lleva borde y fondo propios: a
+     11 px y sin marco parecía una etiqueta y nadie descubría que se podía
+     volver por ahí. */
   .crumb {
-    margin-top: 6px; font-family: var(--mono); font-size: 11px;
+    margin-top: 8px; display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 14px;
     color: var(--ink-dim); pointer-events: auto;
   }
   .crumb button {
     all: unset; cursor: pointer; color: var(--lagoon);
+    padding: 4px 10px; border: 1px solid var(--lagoon);
+    font-family: var(--mono); font-size: 13px;
   }
-  .crumb button:hover, .crumb button:focus-visible { text-decoration: underline; }
   .crumb button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
-  /* ------- columna izquierda: storytelling + controles ------- */
-  .left-col {
-    position: fixed; left: 22px; top: 86px; bottom: 20px; z-index: 5;
-    width: 300px; display: flex; flex-direction: column; gap: 12px;
+  /* ------- boton de idioma: arriba a la derecha, a la altura de la marca -------
+     Sin bandera: Windows no dibuja los emoji de bandera (regional indicators)
+     y saldrian como las dos letras sueltas, peor que no ponerlas. */
+  /* El «?» y el idioma comparten esquina en una sola caja: los dos son ajustes
+     de la sesion, no del dato, y juntos ocupan un rincon en vez de dos. La caja
+     es la que se posiciona; los hijos van en flujo. */
+  .corner {
+    position: fixed; top: 18px; right: 22px; z-index: 7;
+    display: flex; gap: 6px; align-items: stretch;
   }
-  .story {
-    flex: 1 1 auto; min-height: 0; overflow-y: auto;
-    padding: 14px 16px; border: 1px solid var(--line);
+  .lang {
+    display: flex; border: 1px solid var(--line);
     background: var(--panel); backdrop-filter: blur(6px);
+  }
+  .lang button {
+    all: unset; cursor: pointer; padding: 5px 9px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+    color: var(--ink-dim);
+  }
+  .lang button[aria-pressed="true"] { background: var(--lagoon-soft); color: var(--lagoon); }
+  .lang button + button { border-left: 1px solid var(--line); }
+  .lang button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
+
+  /* El «?» va pegado al selector de idioma y con su mismo aspecto: los dos son
+     ajustes de la sesion, no del dato, y agrupados ocupan una esquina en vez
+     de dos. Cuadrado para que se lea como icono y no como una letra suelta. */
+  .help {
+    all: unset; cursor: pointer; width: 26px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: var(--panel);
+    backdrop-filter: blur(6px); color: var(--ink-dim);
+    font-family: var(--mono); font-size: 13px; line-height: 1;
+  }
+  .help:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+
+  /* ---------------------------------------------------------- tutorial -----
+     El foco es un agujero en el velo, hecho con una sombra gigante en lugar de
+     recortar una mascara: asi el velo se pinta solo y el hueco siempre encaja
+     con la caja del elemento, aunque cambie de tamano. */
+  .tour {
+    position: fixed; inset: 0; z-index: 40;
+    opacity: 0; transition: opacity .18s ease;
+    /* El velo NO intercepta los gestos: durante el tutorial se puede girar y
+       hacer zoom en el globo mientras se lee el paso. Un tutorial de gestos en
+       el que no se pueden probar los gestos no ensena nada. */
+    pointer-events: none;
+  }
+  .tour.visible { opacity: 1; }
+  .tour-foco {
+    position: fixed; pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(4, 10, 18, .62);
+    outline: 2px solid var(--lagoon); outline-offset: 0;
+    transition: all .22s cubic-bezier(.4, 0, .2, 1);
+  }
+  :root[data-theme="light"] .tour-foco {
+    box-shadow: 0 0 0 9999px rgba(12, 30, 48, .42);
+  }
+  .tour-card {
+    position: fixed; pointer-events: auto; width: min(360px, calc(100vw - 24px));
+    background: var(--panel); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); padding: 16px 16px 12px;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, .34);
+    transition: top .22s cubic-bezier(.4, 0, .2, 1),
+                left .22s cubic-bezier(.4, 0, .2, 1);
+  }
+  .tour-card.centrada {
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 24px));
+  }
+  /* la flecha apunta al elemento enfocado, para que no haya duda de cual es */
+  .tour-card.bajo::before, .tour-card.sobre::before,
+  .tour-card.dcha::before, .tour-card.izda::before {
+    content: ""; position: absolute; border: 7px solid transparent;
+  }
+  .tour-card.bajo::before  { top: -14px; left: 50%; margin-left: -7px;
+                             border-bottom-color: var(--line); }
+  .tour-card.sobre::before { bottom: -14px; left: 50%; margin-left: -7px;
+                             border-top-color: var(--line); }
+  .tour-card.dcha::before  { left: -14px; top: 50%; margin-top: -7px;
+                             border-right-color: var(--line); }
+  .tour-card.izda::before  { right: -14px; top: 50%; margin-top: -7px;
+                             border-left-color: var(--line); }
+
+  .tour-x {
+    all: unset; cursor: pointer; position: absolute; top: 8px; right: 10px;
+    color: var(--ink-dim); font-size: 18px; line-height: 1; padding: 2px 4px;
+  }
+  .tour-x:focus-visible { outline: 1px solid var(--lagoon); }
+  .tour-n {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    color: var(--ink-dim); text-transform: uppercase; margin-bottom: 4px;
+  }
+  .tour-t { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .tour-b { font-size: 12.5px; line-height: 1.5; color: var(--ink-dim); }
+  .tour-b b { color: var(--ink); font-weight: 600; }
+
+  /* ---- gestos: las dos formas de hacer lo mismo, siempre las dos */
+  .tour-gestos { margin-top: 12px; display: grid; gap: 6px; }
+  .tour-gesto {
+    display: flex; align-items: center; gap: 10px; padding: 7px 9px;
+    border: 1px solid var(--line); opacity: .55;
+  }
+  /* el modo del aparato en el que se esta mirando, resaltado; el otro se queda
+     visible y atenuado, como referencia */
+  .tour-gesto.propio { opacity: 1; border-color: var(--lagoon); background: var(--lagoon-soft); }
+  .tour-gesto-txt { display: grid; gap: 1px; min-width: 0; }
+  .tour-gesto-txt b {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-dim); font-weight: 500;
+  }
+  .tour-gesto.propio .tour-gesto-txt b { color: var(--lagoon); }
+  .tour-gesto-txt span { font-size: 12px; line-height: 1.35; }
+
+  .glifo { width: 62px; height: 26px; flex: none; color: var(--ink); }
+  .glifo .g-cuerpo, .glifo .g-dedo, .glifo .g-rueda, .glifo .g-flecha,
+  .glifo .g-guia, .glifo .g-onda {
+    fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .glifo .g-dedo { fill: var(--lagoon-soft); }
+  .glifo .g-guia { opacity: .3; stroke-dasharray: 3 3; }
+  .glifo .g-flecha { opacity: .75; }
+  .glifo .g-onda { stroke: var(--lagoon); }
+  .glifo .g-boton { stroke: none; }
+  .glifo .g-lat, .glifo .g-lat2 { stroke: var(--lagoon); }
+
+  @keyframes t-mueve  { 0%, 12% { transform: translateX(0) }
+                        62%, 100% { transform: translateX(34px) } }
+  @keyframes t-vaiven { 0%, 100% { transform: translateX(-14px) }
+                        50% { transform: translateX(14px) } }
+  @keyframes t-abre-i { 0%, 100% { transform: translateX(8px) } 55% { transform: translateX(-14px) } }
+  @keyframes t-abre-d { 0%, 100% { transform: translateX(-8px) } 55% { transform: translateX(14px) } }
+  @keyframes t-onda   { 0% { r: 6; opacity: .9 } 70%, 100% { r: 15; opacity: 0 } }
+  @keyframes t-pulsa  { 0%, 100% { opacity: .25 } 20%, 40% { opacity: 1 } }
+  @keyframes t-pulsa2 { 0%, 100% { opacity: .25 } 12%, 22%, 34%, 44% { opacity: 1 } }
+  @keyframes t-scroll { 0%, 100% { transform: translateY(-2px) } 50% { transform: translateY(3px) } }
+
+  .glifo .g-mueve  { animation: t-mueve 2.2s ease-in-out infinite; }
+  .glifo .g-vaiven { animation: t-vaiven 2.6s ease-in-out infinite; }
+  .glifo .g-abre-i { animation: t-abre-i 2.2s ease-in-out infinite; }
+  .glifo .g-abre-d { animation: t-abre-d 2.2s ease-in-out infinite; }
+  .glifo .g-onda   { animation: t-onda 1.8s ease-out infinite; }
+  .glifo .g-onda2  { animation-delay: .28s; }
+  .glifo .g-lat    { animation: t-pulsa 2.2s ease-in-out infinite; }
+  .glifo .g-lat2   { animation: t-pulsa2 2.2s ease-in-out infinite; }
+  .glifo .g-rueda  { animation: t-scroll 1.6s ease-in-out infinite; }
+
+  /* ---- pie */
+  .tour-pies {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 14px;
+  }
+  .tour-puntos { display: flex; gap: 4px; }
+  .tour-puntos i {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--line);
+  }
+  .tour-puntos i[data-hecho] { background: var(--ink-dim); }
+  .tour-puntos i.on { background: var(--lagoon); width: 14px; border-radius: 3px; }
+  .tour-btns { display: flex; gap: 6px; }
+  .tour-btns button {
+    all: unset; cursor: pointer; padding: 6px 12px; font-size: 12px;
+    border: 1px solid var(--line); color: var(--ink-dim);
+  }
+  .tour-btns button.primary {
+    border-color: var(--lagoon); color: var(--lagoon); background: var(--lagoon-soft);
+  }
+  .tour-btns button[disabled] { opacity: .35; cursor: default; }
+  .tour-btns button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+
+  /* ------- panel de historia: abajo a la izquierda, junto al de datos -------
+     Los dos paneles se apoyan en el mismo borde inferior y dejan libre todo el
+     hemisferio de arriba, que es donde está el globo. La altura la marca el
+     contenido, con un tope para que un paso largo del relato no invada la
+     escena. */
+  .story {
+    position: fixed; left: 22px; top: 96px; z-index: 6;
+    width: 300px; max-height: 52vh; display: flex; flex-direction: column;
+    padding: 16px 18px; border: 1px solid var(--line);
+    background: var(--panel); backdrop-filter: blur(6px);
+    transition: transform .3s ease, opacity .3s ease;
   }
   .story h2 {
     font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
-    color: var(--lagoon); margin-bottom: 10px;
+    color: var(--lagoon); margin-bottom: 4px;
   }
-  .story p {
-    font-size: 12px; line-height: 1.6; color: var(--ink-dim);
-    margin-bottom: 10px;
+  .story .step-n {
+    font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
+    margin-bottom: 14px;
   }
-  .controls {
-    display: flex; flex-direction: column; gap: 12px;
-    padding: 14px 16px; border: 1px solid var(--line);
-    background: var(--panel); backdrop-filter: blur(6px);
+  /* El cuerpo ya desplaza por su cuenta: el ultimo paso, la metodologia, es
+     largo a proposito y se lee con esta barra sin romper el alto del panel. */
+  .story .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .story .body h3 {
+    font-size: 14px; font-weight: 600; line-height: 1.35; margin-bottom: 8px;
   }
-  .controls label.head {
-    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+  .story .body p { font-size: 13px; line-height: 1.65; color: var(--ink-dim); }
+  .story .body p + p { margin-top: 9px; }
+  .story .body b { color: var(--ink); font-weight: 600; }
+
+  /* Deja la escena puesta en lo que el paso acaba de contar. Va DENTRO del
+     cuerpo desplazable, no en la barra de navegacion, porque pertenece a este
+     paso concreto y no a moverse por el relato. */
+  .story-go {
+    /* box-sizing va DESPUES de all: unset y no es decorativo. `all: unset`
+       devuelve todas las propiedades a su valor inicial, y el inicial de
+       box-sizing es content-box, que ademas gana al `*` de arriba por
+       especificidad. Con content-box, width:100% mas 22px de relleno daba
+       286px dentro de una caja de 262: el cuerpo del relato salia con barra
+       horizontal, porque overflow-y:auto obliga al otro eje a ser auto. */
+    all: unset; box-sizing: border-box;
+    cursor: pointer; display: flex; flex-direction: column;
+    gap: 1px; width: 100%; margin-top: 12px; padding: 9px 11px;
+    border: 1px solid var(--lagoon); background: var(--lagoon-soft);
+  }
+  .story-go span {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--lagoon);
+  }
+  .story-go b { font-size: 12.5px; line-height: 1.35; color: var(--ink); }
+  .story-go:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  .story nav {
+    display: flex; gap: 8px; margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .story nav button {
+    all: unset; cursor: pointer; flex: 1; text-align: center; padding: 8px 0;
+    border: 1px solid var(--lagoon); color: var(--lagoon);
+    font-size: 12px; font-weight: 500; letter-spacing: .04em;
+  }
+  .story nav button:disabled {
+    opacity: .3; cursor: default; border-color: var(--line); color: var(--ink-dim);
+  }
+  .story nav button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+
+  /* ------- panel inferior: datos y controles ------- */
+  .dock {
+    position: fixed; left: 344px; right: 22px; bottom: 20px; z-index: 6;
+    border: 1px solid var(--line); background: var(--panel);
+    backdrop-filter: blur(6px);
+    transition: transform .3s ease, opacity .3s ease;
+  }
+  .story.collapsed ~ .dock { left: 22px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button {
+    all: unset; cursor: pointer; padding: 9px 18px;
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
     color: var(--ink-dim);
   }
-  .seg { display: flex; border: 1px solid var(--line); }
+  .tabs button[aria-selected="true"] {
+    color: var(--lagoon); box-shadow: inset 0 -2px 0 var(--lagoon);
+  }
+  .tabs button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -3px; }
+  .dock .pane { padding: 14px 18px 16px; }
+  .dock .pane[hidden] { display: none; }
+
+  /* ------- colapsar: los paneles salen de pantalla y el globo queda limpio -------
+     Se trasladan en vez de ocultarse para que la vuelta se anime; el
+     pointer-events evita que un panel invisible siga capturando clics. */
+  .story.collapsed { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  .dock.collapsed { transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none; }
+  /* Colapsar y restaurar son DOS botones, no uno: el de colapsar vive dentro
+     del panel —donde se espera encontrarlo— y por tanto se va con el, asi que
+     hace falta otro fuera que lo traiga de vuelta. Cada uno se ve exactamente
+     cuando sirve para algo. */
+  .toggle {
+    all: unset; cursor: pointer; padding: 4px 9px;
+    border: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
+  }
+  .toggle:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  /* Los de restaurar llevan el nombre del panel y no un símbolo: colapsados
+     son lo único que queda en pantalla, y un ☰ suelto no dice qué va a abrir. */
+  .restore {
+    position: fixed; bottom: 20px; z-index: 7; padding: 9px 16px;
+    background: var(--panel); backdrop-filter: blur(6px);
+    font-family: var(--ui); font-size: 12px; font-weight: 500;
+    letter-spacing: .04em; color: var(--lagoon); border-color: var(--lagoon);
+  }
+  .restore[hidden] { display: none; }
+  /* el de la historia acompaña a su panel: arriba a la izquierda en escritorio,
+     donde ahora aparece; el de datos sigue abajo, con el suyo */
+  #show-story { left: 22px; top: 96px; bottom: auto; }
+  #show-dock { right: 22px; }
+
+  /* el de la historia va en su cabecera, en linea con el titulo */
+  .story h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  /* ------- segmentado (tema) -------
+     Comparte borde, alto y tipografía con el cintillo de indicadores y con el
+     selector de idioma: los tres son el mismo gesto —elegir una opción de una
+     lista corta— y deben verse igual. Este bloque sustituye al del carrusel
+     paginado, que el cintillo dejó sin uso y del que solo sobrevivía, por
+     accidente, el estilo de los botones del tema. */
+  .seg {
+    display: flex; border: 1px solid var(--line);
+  }
   .seg button {
     all: unset; cursor: pointer; flex: 1; text-align: center;
-    padding: 7px 10px; font-size: 12px; font-weight: 500; color: var(--ink-dim);
+    padding: 7px 12px; font-size: 12px; font-weight: 500;
+    color: var(--ink-dim); transition: background .15s, color .15s;
   }
-  .seg button[aria-pressed="true"] { background: var(--lagoon-soft); color: var(--lagoon); }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] {
+    background: var(--lagoon-soft); color: var(--lagoon); font-weight: 600;
+  }
   .seg button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
+
+
+  #lang-select {
+    width: 100%; margin-top: 4px; padding: 6px 8px;
+    background: transparent; color: var(--ink); border: 1px solid var(--line);
+    font-family: var(--ui); font-size: 12px;
+  }
+  #lang-select:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
+  /* el desplegable nativo se pinta con los colores del sistema, no con los
+     nuestros: se le da el fondo del panel para que no salga blanco en oscuro */
+  #lang-select option { background: var(--abyss); color: var(--ink); }
+
+  /* ------- etiquetas de los polígonos -------
+     Van en HTML y no como sprites dentro de la escena: el texto queda nítido a
+     cualquier zoom, se traduce con el resto del interfaz y hereda los colores
+     del tema. El halo con text-shadow es lo que las hace legibles tanto sobre
+     el rojo oscuro de una anomalía alta como sobre el océano claro. */
+  #labels { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  #labels div {
+    position: absolute; transform: translate(-50%, -50%);
+    font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; white-space: nowrap;
+    color: var(--label-ink);
+    text-shadow: 0 0 3px var(--label-halo), 0 0 6px var(--label-halo),
+                 0 0 10px var(--label-halo);
+    transition: opacity .2s;
+  }
 
   .slider-row { display: flex; align-items: center; gap: 10px; }
   .slider-row input[type="range"] { flex: 1; accent-color: var(--lagoon); }
@@ -112,153 +466,294 @@
     font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
   }
 
-  /* ------- panel de lectura ------- */
-  #panel {
-    position: fixed; top: 18px; right: 22px; z-index: 5;
-    width: 292px; padding: 16px 18px 18px;
-    border: 1px solid var(--line); background: var(--panel);
-    backdrop-filter: blur(6px);
-    transform: translateX(16px); opacity: 0; pointer-events: none;
-    transition: transform .25s ease, opacity .25s ease;
+  /* ------- pestana Datos: cintillo + grafica ------- */
+  .ribbon {
+    display: flex; overflow-x: auto; scrollbar-width: thin;
+    border: 1px solid var(--line); margin-bottom: 14px;
   }
-  #panel.open { transform: none; opacity: 1; pointer-events: auto; }
-  #panel .region-tag {
-    font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
-    text-transform: uppercase; color: var(--lagoon);
+  .ribbon button {
+    all: unset; cursor: pointer; white-space: nowrap; padding: 7px 14px;
+    font-size: 12px; font-weight: 500; color: var(--ink-dim);
+    border-right: 1px solid var(--line); flex: 0 0 auto;
   }
-  #panel h2 { font-size: 20px; font-weight: 700; margin: 4px 0 12px; }
-  .readout { font-family: var(--mono); font-size: 12px; }
-  .readout .row {
-    display: flex; justify-content: space-between; gap: 8px;
-    padding: 4px 0; border-top: 1px dashed var(--line);
-  }
-  .readout .row .y { color: var(--ink-dim); }
-  .stripes { display: flex; height: 26px; margin: 12px 0 4px; border: 1px solid var(--line); }
-  .stripes div { flex: 1; }
-  .note { font-size: 10.5px; color: var(--ink-dim); margin-top: 10px; line-height: 1.45; }
-  #panel .drill {
-    all: unset; cursor: pointer; display: block; margin-top: 14px;
-    padding: 8px 0; text-align: center; width: 100%;
-    border: 1px solid var(--lagoon); color: var(--lagoon);
-    font-size: 12px; font-weight: 500; letter-spacing: .06em;
-  }
-  #panel .drill:hover { background: var(--lagoon-soft); }
-  #panel .drill:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  .ribbon button:last-child { border-right: 0; }
+  .ribbon button[aria-pressed="true"] { background: var(--lagoon-soft); color: var(--lagoon); }
+  .ribbon button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -2px; }
 
-  .hint {
-    position: fixed; right: 22px; bottom: 20px; z-index: 4;
-    font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim);
-    text-align: right; line-height: 1.6; pointer-events: none;
+  .chart-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .chart-head .ind { font-size: 14px; font-weight: 700; color: var(--ink); }
+  .chart-head .who { font-size: 12px; color: var(--lagoon); }
+  .chart-head .uom {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); margin-left: auto;
   }
+
+  .chart-wrap { position: relative; }
+  #chart { display: block; width: 100%; height: 176px; }
+  #chart .axis { stroke: var(--line); stroke-width: 1; }
+  #chart .zero { stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: .5; }
+  #chart .tick { fill: var(--ink-dim); font-family: var(--mono); font-size: 9.5px; }
+  #chart .line {
+    fill: none; stroke: var(--lagoon); stroke-width: 2;
+    stroke-linejoin: round; stroke-linecap: round;
+  }
+  #chart .dot { stroke: var(--panel); stroke-width: 1.5; }
+  #chart .hit { fill: transparent; cursor: pointer; }
+  #chart .guide { stroke: var(--lagoon); stroke-width: 1; opacity: .45; }
+
+  .chart-empty {
+    display: flex; align-items: center; justify-content: center; height: 176px;
+    font-size: 12.5px; color: var(--ink-dim); text-align: center;
+  }
+  .chart-empty[hidden], .chart-wrap[hidden] { display: none; }
+
+  .tip {
+    position: absolute; pointer-events: none; z-index: 2;
+    padding: 4px 8px; border: 1px solid var(--lagoon);
+    background: var(--abyss); font-family: var(--mono); font-size: 11px;
+    color: var(--ink); white-space: nowrap; transform: translate(-50%, -145%);
+  }
+  .tip .y { color: var(--ink-dim); margin-right: 6px; }
+  .tip[hidden] { display: none; }
+
+  .drill {
+    all: unset; cursor: pointer; padding: 7px 14px; margin-top: 10px;
+    border: 1px solid var(--lagoon); color: var(--lagoon);
+    font-size: 12px; font-weight: 500; letter-spacing: .04em;
+  }
+  .drill:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  .drill[hidden] { display: none; }
+  /* La pista va pegada al botón porque es justo donde se mira cuando se quiere
+     bajar de nivel; suelta por la pantalla nadie la lee. */
+  .drill-row { display: flex; align-items: center; gap: 12px; }
+  .drill-hint { font-size: 11px; color: var(--ink-dim); }
+  .drill-hint[hidden] { display: none; }
+
+  /* ------- pestana Controles: los sliders en rejilla ------- */
+  .ctrl-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    gap: 14px 24px; align-items: start;
+  }
+  .ctrl-grid label.head {
+    display: block; margin-bottom: 5px;
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-row input[type="range"] { flex: 1; accent-color: var(--lagoon); }
+  .slider-row .val {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-dim); width: 7ch;
+  }
+
+  .legend { display: flex; flex-direction: column; gap: 4px; }
+  .ramp { height: 8px; border: 1px solid var(--line); }
+  .ramp-labels {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
+  }
+
+  /* alinear norte: dentro del area de visualizacion, bajo el boton de idioma */
   .north {
-    all: unset; cursor: pointer; position: fixed; right: 22px; bottom: 64px;
-    z-index: 5; padding: 7px 14px; border: 1px solid var(--lagoon);
+    all: unset; cursor: pointer; position: fixed; right: 22px; top: 56px;
+    z-index: 6; padding: 7px 14px; border: 1px solid var(--lagoon);
     color: var(--lagoon); background: var(--panel); backdrop-filter: blur(6px);
     font-size: 11.5px; font-weight: 500; letter-spacing: .06em;
   }
-  .north:hover { background: var(--lagoon-soft); }
   .north:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
+  /* La procedencia de los datos vive en la barra de pestanas del panel de
+     datos, no flotando sobre el globo: alli era ilegible sobre el mapa claro y
+     ademas es justo el sitio donde se mira el dato. */
+  .tabs .spacer { flex: 1; }
   .syn-badge {
-    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-    z-index: 4; font-family: var(--mono); font-size: 10px;
-    color: var(--sand); border: 1px dashed var(--sand-line);
-    padding: 3px 10px; pointer-events: none;
+    align-self: center; font-family: var(--mono); font-size: 10px;
+    color: var(--sand); padding: 0 12px; pointer-events: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tabs .toggle { align-self: center; margin-right: 8px; }
+
+
+  /* ------- realce al pasar por encima -------
+     Va dentro de @media (hover: hover) porque en táctil el :hover se queda
+     PEGADO al último elemento tocado: al cerrar un panel con su propio botón,
+     el botón se quedaba verde como si el panel siguiera abierto, y solo se
+     apagaba al tocar otra cosa. Con esto, en pantallas sin puntero el color
+     depende únicamente de aria-expanded, que es el estado real. */
+  @media (hover: hover) {
+  .crumb button:hover { background: var(--lagoon-soft); }
+  .story nav button:hover:not(:disabled) { background: var(--lagoon-soft); }
+  .toggle:hover { color: var(--lagoon); border-color: var(--lagoon); }
+  .restore:hover { background: var(--lagoon-soft); color: var(--lagoon); }
+  .seg button:hover { color: var(--ink); }
+  .drill:hover { background: var(--lagoon-soft); }
+  .north:hover { background: var(--lagoon-soft); }
   }
 
-  @media (max-width: 720px) {
-    header { left: 14px; top: 12px; }
-    .left-col { left: 10px; right: 10px; bottom: 10px; top: auto; width: auto; }
-    .story { display: none; }
-    .controls { flex-direction: row; flex-wrap: wrap; align-items: center; }
-    .controls > div { flex: 1 1 40%; }
-    #panel { top: auto; bottom: 86px; right: 10px; left: 10px; width: auto; }
-    .north { bottom: auto; top: 12px; right: 10px; }
-    .hint, .syn-badge { display: none; }
+  /* ------------------------------------------------------------ móvil -------
+     En pantalla estrecha el espacio vertical es el recurso escaso, así que
+     todo lo que abre se agrupa ARRIBA —idioma, miga, los dos botones y el
+     panel que esté abierto— y abajo no queda más que «alinear norte». El globo
+     se desplaza hacia abajo por el hueco que libera el panel (lo hace
+     ajustarEncuadre en main.js) en vez de quedarse tapado. */
+  @media (max-width: 900px) {
+    header {
+      left: 12px; top: 8px;
+      /* deja libre la esquina de ajustes: si no, «países y territorios» se
+         mete por debajo de los botones. Son los tres de idioma (~98px) mas el
+         «?» y su hueco (~32px), mas el margen derecho. */
+      right: 152px; pointer-events: none;
+    }
+    .corner { top: 8px; right: 10px; }
+    .crumb { flex-wrap: wrap; row-gap: 4px; font-size: 12px; margin-top: 6px; }
+    .crumb button { padding: 3px 8px; font-size: 12px; }
+
+    /* los dos botones, en una barra bajo la cabecera; siempre visibles */
+    .restore[hidden] { display: block; }
+    .restore { top: 78px; bottom: auto; padding: 7px 13px; }
+    /* el de escritorio fija top con un selector de ID, más específico que
+       .restore: hay que repetirlo aquí o los dos botones no se alinean */
+    #show-story { left: 10px; top: 78px; bottom: auto; }
+    #show-dock { right: 10px; }
+    .restore[aria-expanded="true"] {
+      background: var(--lagoon-soft); border-color: var(--lagoon);
+    }
+
+    /* el panel abierto cuelga de esa barra */
+    .story, .dock, .story.collapsed ~ .dock {
+      left: 10px; right: 10px; width: auto; top: 120px; bottom: auto;
+    }
+    .story { max-height: 52vh; }
+    .dock { max-height: 62vh; overflow-y: auto; }
+    /* al plegarse suben, no bajan: es de donde vienen */
+    .story.collapsed, .dock.collapsed { transform: translateY(calc(-100% - 130px)); }
+
+    /* el panel se acorta para dejarle sitio al globo: la gráfica es lo que
+       más ocupa, y a 118 px las 24 marcas siguen leyéndose */
+    .dock .pane { padding: 10px 12px 12px; }
+    #chart { height: 118px; }
+    .chart-empty { height: 118px; font-size: 12px; }
+    .ribbon { margin-bottom: 10px; }
+    .ribbon button { padding: 6px 11px; }
+    .chart-head { margin-bottom: 2px; }
+    .drill { margin-top: 8px; padding: 6px 12px; }
+
+    .syn-badge { display: none; }
+    .north { top: auto; bottom: 12px; right: 10px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    #panel { transition: none; }
+    .story, .dock { transition: none; }
   }
 </style>
 </head>
 <body>
 <canvas id="scene" aria-label="Globo 3D del Pacífico con volúmenes climáticos por región"></canvas>
+<!-- nombres de las unidades, proyectados sobre el lienzo desde main.js -->
+<div id="labels" aria-hidden="true"></div>
 
 <header>
-  <div class="wordmark">Pacific <span>Strata</span></div>
-  <nav class="crumb" id="crumb" aria-label="Nivel de navegación">Pacífico · subregiones</nav>
+  <!-- una letra por estrato: los <i> van pegados a proposito, cualquier salto
+       de linea entre ellos metería un espacio dentro de la palabra -->
+  <div class="wordmark" aria-label="Pacific Data Strata">Pacific <span class="strata"
+    ><i>D</i><i>a</i><i>t</i><i>a</i> <i>S</i><i>t</i><i>r</i><i>a</i><i>t</i><i>a</i></span></div>
+  <nav class="crumb" id="crumb" aria-label="Nivel de navegación">Pacífico &middot; subregiones</nav>
 </header>
 
-<div class="left-col">
-  <aside class="story" aria-label="Narrativa">
-    <h2>Historia</h2>
-    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean commodo
-       ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis
-       dis parturient montes, nascetur ridiculus mus.</p>
-    <p>Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem.
-       Nulla consequat massa quis enim. Donec pede justo, fringilla vel,
-       aliquet nec, vulputate eget, arcu.</p>
-    <p>In enim justo, rhoncus ut, imperdiet a, venenatis vitae, justo. Nullam
-       dictum felis eu pede mollis pretium. Integer tincidunt. Cras dapibus.
-       Vivamus elementum semper nisi.</p>
-    <p>Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu,
-       consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in,
-       viverra quis, feugiat a, tellus.</p>
-  </aside>
+<!-- idioma: arriba a la derecha, a la altura de la marca. Los botones los
+     genera main.js desde LANGS para que no se desincronicen del diccionario -->
+<div class="corner">
+  <button class="help" id="tour-btn" data-i18n-label="tour_btn">?</button>
+  <div class="lang" id="lang" role="group" aria-label="Idioma"></div>
+</div>
 
-  <div class="controls" role="group" aria-label="Controles de visualización">
-    <div>
-      <label class="head" for="seg-ind">Indicador</label>
-      <div class="seg" id="seg-ind" role="group"></div>
+<button class="north" id="north-btn" data-i18n-title="title_north" data-i18n="btn_north"
+        title="Poner los meridianos verticales">&#8853; alinear norte</button>
+
+<!-- ------------------------------------------------ panel de historia -->
+<aside class="story" id="story" aria-label="Relato">
+  <h2>
+    <span data-i18n="story_title">Relato</span>
+    <button class="toggle" id="hide-story" data-i18n-label="toggle_story"
+            aria-controls="story">&#10005;</button>
+  </h2>
+  <div class="step-n" id="story-n"></div>
+  <div class="body" id="story-body"></div>
+  <nav>
+    <button id="story-prev" data-i18n="story_prev">&larr; Anterior</button>
+    <button id="story-next" data-i18n="story_next">Siguiente &rarr;</button>
+  </nav>
+</aside>
+<button class="toggle restore" id="show-story" aria-controls="story"
+        data-i18n="btn_story" data-i18n-title="toggle_story" hidden>Historia</button>
+
+<!-- ------------------------------------- panel inferior: datos y controles -->
+<section class="dock" id="dock" aria-label="Datos y controles">
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-data" aria-controls="pane-data" aria-selected="true"
+            data-i18n="tab_data">Datos</button>
+    <button role="tab" id="tab-ctrl" aria-controls="pane-ctrl" aria-selected="false"
+            data-i18n="tab_ctrl">Controles</button>
+    <span class="spacer"></span>
+    <span class="syn-badge" data-i18n="badge">datos .STAT 2003-2026</span>
+    <button class="toggle" id="hide-dock" data-i18n-label="toggle_dock"
+            aria-controls="dock">&#9660;</button>
+  </div>
+
+  <div class="pane" id="pane-data" role="tabpanel" aria-labelledby="tab-data">
+    <!-- cintillo de indicadores: todos a la vista, con desplazamiento
+         horizontal. Sustituye al carrusel paginado. -->
+    <div class="ribbon" id="ribbon" role="group" aria-label="Indicadores"></div>
+
+    <div class="chart-empty" id="chart-empty" data-i18n="chart_empty">
+      Selecciona una subregión o un país en el globo
     </div>
-    <div>
-      <label class="head" for="height">Altura del seleccionado</label>
-      <div class="slider-row">
-        <input id="height" type="range" min="1" max="10" step="0.1" value="3" />
-        <span class="val" id="height-val">3 ×</span>
+
+    <div class="chart-wrap" id="chart-wrap" hidden>
+      <div class="chart-head">
+        <span class="ind" id="chart-ind"></span>
+        <span class="who" id="chart-who"></span>
+        <span class="uom" id="chart-uom"></span>
       </div>
+      <svg id="chart" role="img" aria-labelledby="chart-ind chart-who"></svg>
+      <div class="tip" id="chart-tip" hidden></div>
     </div>
-    <div>
-      <label class="head" for="sep">Separación de estratos</label>
-      <div class="slider-row">
-        <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
-        <span class="val" id="sep-val">volumen</span>
-      </div>
-    </div>
-    <div>
-      <label class="head" for="opacity">Transparencia de capas</label>
-      <div class="slider-row">
-        <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
-        <span class="val" id="opacity-val">opacas</span>
-      </div>
-    </div>
-    <div>
-      <label class="head" for="seg-theme">Tema</label>
-      <div class="seg" id="seg-theme" role="group"></div>
-    </div>
-    <div class="legend">
-      <label class="head">Escala</label>
-      <div class="ramp" id="ramp"></div>
-      <div class="ramp-labels"><span id="ramp-min"></span><span id="ramp-max"></span></div>
+
+    <!-- fuera de chart-wrap: al bajar a nivel país no hay nada seleccionado y
+         la gráfica está oculta, pero el botón de volver tiene que seguir ahí -->
+    <div class="drill-row">
+      <button class="drill" id="p-drill" hidden></button>
+      <span class="drill-hint" id="p-drill-hint" hidden></span>
     </div>
   </div>
-</div>
 
-<aside id="panel" aria-live="polite">
-  <div class="region-tag" id="p-region"></div>
-  <h2 id="p-name"></h2>
-  <div class="stripes" id="p-stripes" aria-hidden="true"></div>
-  <div class="readout" id="p-readout"></div>
-  <p class="note" id="p-note"></p>
-  <button class="drill" id="p-drill" hidden>Ver países de la subregión →</button>
-</aside>
-
-<button class="north" id="north-btn" title="Poner los meridianos verticales">⊕ alinear norte</button>
-<div class="hint">
-  clic — separar estratos · clic fuera / Esc — soltar<br />
-  arrastrar — girar · clic central — mover · rueda — acercar
-</div>
-<div class="syn-badge">datos sintéticos · pseudo-ZEE de demostración</div>
+  <div class="pane" id="pane-ctrl" role="tabpanel" aria-labelledby="tab-ctrl" hidden>
+    <div class="ctrl-grid">
+      <div>
+        <label class="head" for="height" data-i18n="lbl_height">Altura del seleccionado</label>
+        <div class="slider-row">
+          <input id="height" type="range" min="1" max="10" step="0.1" value="5" />
+          <span class="val" id="height-val">5 &times;</span>
+        </div>
+      </div>
+      <div>
+        <label class="head" for="opacity" data-i18n="lbl_opacity">Transparencia de capas</label>
+        <div class="slider-row">
+          <input id="opacity" type="range" min="0.15" max="1" step="0.01" value="1" />
+          <span class="val" id="opacity-val">opacas</span>
+        </div>
+      </div>
+      <div>
+        <label class="head" for="seg-theme" data-i18n="lbl_theme">Tema</label>
+        <div class="seg" id="seg-theme" role="group"></div>
+      </div>
+      <div class="legend">
+        <label class="head" data-i18n="lbl_scale">Escala</label>
+        <div class="ramp" id="ramp"></div>
+        <div class="ramp-labels"><span id="ramp-min"></span><span id="ramp-max"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+<button class="toggle restore" id="show-dock" aria-controls="dock"
+        data-i18n="btn_dock" data-i18n-title="toggle_dock" hidden>Datos y controles</button>
 
 <script type="importmap">
 {
