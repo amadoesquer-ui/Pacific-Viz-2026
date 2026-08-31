@@ -87,7 +87,6 @@
     padding: 4px 10px; border: 1px solid var(--lagoon);
     font-family: var(--mono); font-size: 13px;
   }
-  .crumb button:hover { background: var(--lagoon-soft); }
   .crumb button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   /* ------- boton de idioma: arriba a la derecha, a la altura de la marca -------
@@ -138,7 +137,6 @@
     border: 1px solid var(--lagoon); color: var(--lagoon);
     font-size: 12px; font-weight: 500; letter-spacing: .04em;
   }
-  .story nav button:hover:not(:disabled) { background: var(--lagoon-soft); }
   .story nav button:disabled {
     opacity: .3; cursor: default; border-color: var(--line); color: var(--ink-dim);
   }
@@ -179,7 +177,6 @@
     border: 1px solid var(--line);
     font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
   }
-  .toggle:hover { color: var(--lagoon); border-color: var(--lagoon); }
   .toggle:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
   /* Los de restaurar llevan el nombre del panel y no un símbolo: colapsados
      son lo único que queda en pantalla, y un ☰ suelto no dice qué va a abrir. */
@@ -189,7 +186,6 @@
     font-family: var(--ui); font-size: 12px; font-weight: 500;
     letter-spacing: .04em; color: var(--lagoon); border-color: var(--lagoon);
   }
-  .restore:hover { background: var(--lagoon-soft); color: var(--lagoon); }
   .restore[hidden] { display: none; }
   /* el de la historia acompaña a su panel: arriba a la izquierda en escritorio,
      donde ahora aparece; el de datos sigue abajo, con el suyo */
@@ -214,7 +210,6 @@
     color: var(--ink-dim); transition: background .15s, color .15s;
   }
   .seg button + button { border-left: 1px solid var(--line); }
-  .seg button:hover { color: var(--ink); }
   .seg button[aria-pressed="true"] {
     background: var(--lagoon-soft); color: var(--lagoon); font-weight: 600;
   }
@@ -312,7 +307,6 @@
     border: 1px solid var(--lagoon); color: var(--lagoon);
     font-size: 12px; font-weight: 500; letter-spacing: .04em;
   }
-  .drill:hover { background: var(--lagoon-soft); }
   .drill:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
   .drill[hidden] { display: none; }
   /* La pista va pegada al botón porque es justo donde se mira cuando se quiere
@@ -351,7 +345,6 @@
     color: var(--lagoon); background: var(--panel); backdrop-filter: blur(6px);
     font-size: 11.5px; font-weight: 500; letter-spacing: .06em;
   }
-  .north:hover { background: var(--lagoon-soft); }
   .north:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   /* La procedencia de los datos vive en la barra de pestanas del panel de
@@ -364,6 +357,23 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tabs .toggle { align-self: center; margin-right: 8px; }
+
+
+  /* ------- realce al pasar por encima -------
+     Va dentro de @media (hover: hover) porque en táctil el :hover se queda
+     PEGADO al último elemento tocado: al cerrar un panel con su propio botón,
+     el botón se quedaba verde como si el panel siguiera abierto, y solo se
+     apagaba al tocar otra cosa. Con esto, en pantallas sin puntero el color
+     depende únicamente de aria-expanded, que es el estado real. */
+  @media (hover: hover) {
+  .crumb button:hover { background: var(--lagoon-soft); }
+  .story nav button:hover:not(:disabled) { background: var(--lagoon-soft); }
+  .toggle:hover { color: var(--lagoon); border-color: var(--lagoon); }
+  .restore:hover { background: var(--lagoon-soft); color: var(--lagoon); }
+  .seg button:hover { color: var(--ink); }
+  .drill:hover { background: var(--lagoon-soft); }
+  .north:hover { background: var(--lagoon-soft); }
+  }
 
   /* ------------------------------------------------------------ móvil -------
      En pantalla estrecha el espacio vertical es el recurso escaso, así que

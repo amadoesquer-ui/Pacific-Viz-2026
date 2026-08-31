@@ -596,9 +596,6 @@ function animate(now) {
       }
     }
   }
-  // la altura de los estratos entra en el tamaño de la silueta, así que el
-  // objetivo se recalcula en cada cuadro y no solo al abrir el panel
-  ajustarEncuadre();
   aplicarEncuadre();
   placeLabels();
   renderer.render(scene, camera);
@@ -889,6 +886,7 @@ function select(u) {
   // sale (vuelve a THICK_MIN) y la que entra (toma el valor del slider)
   if (prev && prev !== u) rebuildUnit(prev);
   if (u && u !== prev) rebuildUnit(u);
+  ajustarEncuadre();    // la pila seleccionada sube: la franja de datos cambia
   recolor();            // cambia qué pilas van atenuadas; ya rehace la gráfica
   paintDrill();         // recolor solo llega aquí si hay gráfica que pintar
 }
@@ -959,6 +957,7 @@ function enterRegion(regionId) {
   for (const u of units.country) u.group.visible = u.region === regionId;
   paintCrumb();
   paintDrill();
+  ajustarEncuadre();    // cambian las unidades visibles
 }
 
 // La miga se pinta aparte de enterRegion/exitRegion porque también hay que
@@ -980,6 +979,7 @@ function exitRegion() {
   for (const u of units.region) u.group.visible = true;
   paintCrumb();
   paintDrill();
+  ajustarEncuadre();    // cambian las unidades visibles
 }
 
 // ------------------------------------------------------------------ controles
@@ -1152,6 +1152,13 @@ function encuadreObjetivo() {
 
 // El desplazamiento se interpola en el bucle de dibujo en vez de saltar: el
 // panel entra deslizándose y el globo tiene que acompañarlo.
+//
+// El OBJETIVO, en cambio, se recalcula solo cuando cambia algo que lo afecta y
+// nunca en cada cuadro. Recalcularlo continuamente hacía que girar moviera el
+// encuadre —la extensión de los datos depende de hacia dónde mires—, y el globo
+// parecía girar alrededor de un eje desplazado hacia arriba en vez de sobre su
+// propio centro. Girar y acercar no tocan el encuadre; abrir un panel,
+// seleccionar, cambiar de nivel o subir la altura, sí.
 let encuadre = 0, encuadreMeta = 0;
 
 function ajustarEncuadre() {
@@ -1398,6 +1405,7 @@ hgt.addEventListener("input", () => {
   state.height = +hgt.value;
   hgtVal.textContent = state.height < 1.05 ? t("val_equal")
                      : (+state.height.toFixed(1)) + " ×";
+  ajustarEncuadre();    // el techo de la pila sube o baja con la altura
   queueRebuild();
 });
 
