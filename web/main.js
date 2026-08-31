@@ -18,7 +18,7 @@ const STACK_T = 2;                   // grosor total de la pila (todas las losas
 const THICK_MIN = 1;                 // grosor de losa sin seleccionar (fracción del paso)
 // Altura de la pila SELECCIONADA, como múltiplo de la de las no seleccionadas:
 // a 1× se ve exactamente igual que las demás; a 10×, diez veces más alta.
-const H_MIN = 1, H_MAX = 10, H_DEF = 3;
+const H_MIN = 1, H_MAX = 10, H_DEF = 5;
 // Hueco máximo entre losas, como fracción del paso. No llega a 1 porque ahí la
 // losa tendría grosor cero; a 0.85 queda un estrato del 15 % del paso.
 const SEP_MAX_FRAC = 0.85;
@@ -76,7 +76,8 @@ const state = {
   regionId: null,           // subregión activa en nivel país
   indicator: null,          // id del indicador
   selected: null,           // unit seleccionada (objeto unit)
-  hoveredYear: null,        // índice del año bajo el cursor, en el panel
+  hoveredYear: null,        // índice del año bajo el cursor, en la gráfica
+  pinnedYear: null,         // año fijado con un clic: sobrevive al puntero
   separation: 0,            // 0 volumen … 1 estratos (reparte, no añade altura)
   height: H_DEF,            // altura del seleccionado, × la de los no seleccionados
   opacity: 1,               // opacidad de las losas (1 = opacas)
@@ -99,7 +100,7 @@ placeCamera();
 // Sin OrbitControls: arrastrar gira el PROPIO globo (libre, ambos ejes);
 // el botón «alinear norte» endereza el eje N-S; el botón central / dos
 // dedos lo desplazan y la rueda hace zoom moviendo la cámara.
-const ZOOM_MIN = 150, ZOOM_MAX = 650, ROT_SPEED = 0.005;
+const ZOOM_MIN = 150, ZOOM_MAX = 650;
 
 const ambient = new THREE.AmbientLight(theme.ambient, theme.ambientI);
 scene.add(ambient);
@@ -522,8 +523,11 @@ function recolor() {
 // anclaje de la base. El caso h = 0 se trata aparte por eso mismo: si subiera
 // «de la base hacia arriba», la base dejaría de estar pegada al globo.
 const HOVER_PAD = 1.6;                 // en unidades de radio, ~1 losa base
-const HOVER_EMISSIVE = 0x6b5a20;       // realce contenido: marca la losa sin
-                                       // lavarle el color con el que se lee
+// Destello: la losa se enciende en blanco y se apaga sola hasta su color real.
+// Es un pulso y no un resaltado permanente porque el color ES el dato; el
+// amarillo fijo que había antes lo tapaba justo mientras lo estabas mirando.
+const FLASH_MS = 900;
+const _flashColor = new THREE.Color();
 
 function padFor(i, h) {
   if (h === null) return 0;
@@ -551,7 +555,7 @@ function animate(now) {
       if (!u.group.visible) continue;
       const gap = gapOf(u);
       const isSel = state.selected === u;
-      const h = isSel ? state.hoveredYear : null;
+      const h = isSel ? activeYear() : null;
       for (const s of u.slabs) {
         const i = s.yearIndex;
         // Sin seleccionar, la unidad se lee como un mapa plano: un solo
@@ -575,7 +579,9 @@ function animate(now) {
           const next = lerp(cur, target, LERP_PILA);
           escala = Math.abs(next - target) < 1e-4 ? target : next;
           m.scale.setScalar(escala);
-          m.material.emissive.setHex(lit ? HOVER_EMISSIVE : 0x000000);
+          // easeOut invertido: arranca fuerte y se apaga suave
+          const k = lit ? 1 - Math.min(1, (now - flashT0) / FLASH_MS) : 0;
+          m.material.emissive.copy(_flashColor.setScalar(k * k * 0.9));
         }
         // se oculta al terminar de plegarse, no al deseleccionar: si no, la
         // pila desaparecería de golpe en vez de bajar
@@ -713,11 +719,28 @@ const _q = new THREE.Quaternion();
 const pointers = new Map();            // pointerId -> {x, y, button}
 let northTarget = null;                // cuaternión objetivo de «alinear norte»
 
+// Radio del globo tal como se ve, en píxeles. Un objeto de tamaño R a la
+// distancia d ocupa R/d radianes, y media pantalla cubre tan(fov/2)·d unidades
+// de mundo repartidas en la mitad de la altura del lienzo.
+function radioEnPixeles() {
+  const d = camera.position.length();
+  const pxPorUnidad = canvas.clientHeight /
+    (2 * Math.tan(camera.fov * Math.PI / 360) * d);
+  return R * pxPorUnidad;
+}
+
+// El giro se mide contra ese radio, no con una constante de radianes por
+// píxel. Antes eran 0,005 rad/px fijos: más del doble de lo que corresponde,
+// así que el globo se adelantaba al dedo, y además giraba igual de rápido
+// estuviera lejos o acercado. Ahora arrastrar un radio gira un radián, de modo
+// que el punto que tocas se queda debajo del dedo y al acercarte el giro se
+// vuelve proporcionalmente más fino.
 function rotateGlobe(dx, dy) {
+  const k = 1 / Math.max(radioEnPixeles(), 1);
   _right.setFromMatrixColumn(camera.matrixWorld, 0);
   _up.setFromMatrixColumn(camera.matrixWorld, 1);
-  globe.quaternion.premultiply(_q.setFromAxisAngle(_up, dx * ROT_SPEED));
-  globe.quaternion.premultiply(_q.setFromAxisAngle(_right, dy * ROT_SPEED));
+  globe.quaternion.premultiply(_q.setFromAxisAngle(_up, dx * k));
+  globe.quaternion.premultiply(_q.setFromAxisAngle(_right, dy * k));
 }
 
 function panGlobe(dx, dy) {
@@ -766,7 +789,7 @@ canvas.addEventListener("pointerdown", e => {
 // 500 ms, la misma ventana que usan Windows y macOS para el doble clic. Con
 // 350 se quedaban fuera los dobles toques de dedo, que son más lentos que los
 // de ratón.
-const DOBLE_MS = 500;
+let DOBLE_MS = 500;
 let ultimoClic = { unidad: null, t: 0 };
 
 function activar(u) {
@@ -849,7 +872,11 @@ const crumb = document.getElementById("crumb");
 function select(u) {
   const prev = state.selected;
   state.selected = u;
+  // el año fijado pertenece a la unidad que estaba abierta: al cambiar de
+  // unidad o soltarla, los estratos vuelven a juntarse
   state.hoveredYear = null;
+  state.pinnedYear = null;
+  flashYear = null;
   // el grosor del slider solo aplica a la selección: reconstruir la que
   // sale (vuelve a THICK_MIN) y la que entra (toma el valor del slider)
   if (prev && prev !== u) rebuildUnit(prev);
@@ -858,10 +885,29 @@ function select(u) {
   paintDrill();         // recolor solo llega aquí si hay gráfica que pintar
 }
 
-// El año destacado vive en dos sitios: la losa del globo (la mueve y la
-// ilumina animate) y el punto de la gráfica (lo resalta y saca el globito).
+// Hay dos años en juego: el que está bajo el puntero, que es una vista previa
+// y se va con él, y el que se ha fijado con un clic, que se queda. El fijado es
+// lo que permite abrir el hueco, cerrar el panel y quedarse mirando la pila.
+const activeYear = () => state.hoveredYear ?? state.pinnedYear;
+
 function setHoveredYear(i) {
   state.hoveredYear = i;
+  marcarAño();
+}
+
+function togglePinnedYear(i) {
+  state.pinnedYear = state.pinnedYear === i ? null : i;
+  marcarAño();
+}
+
+// El destello se dispara cuando cambia el año activo, no en cada cuadro: es un
+// pulso de luz que se apaga, no un resaltado permanente. El amarillo fijo que
+// había antes le robaba el color al dato, que es justo lo que hay que leer.
+let flashYear = null, flashT0 = 0;
+
+function marcarAño() {
+  const i = activeYear();
+  if (i !== flashYear) { flashYear = i; flashT0 = performance.now(); }
   paintTip(i);
 }
 
@@ -1168,11 +1214,14 @@ function drawChart() {
     });
     hit.addEventListener("mouseenter", () => setHoveredYear(i));
     hit.addEventListener("mouseleave", () => setHoveredYear(null));
+    // el clic fija el año: el hueco se queda abierto aunque se cierre el panel
+    hit.addEventListener("click", () => togglePinnedYear(i));
     chart.appendChild(hit);
   });
 
   chart._guia = guia;
   animarTrazo(linea);
+  paintTip(activeYear());       // el año fijado sobrevive al redibujado
   paintDrill();
 }
 
@@ -1199,10 +1248,12 @@ function animarTrazo(linea) {
 function paintTip(i) {
   const p = i === null ? null : chartPts[i];
   const guia = chart._guia;
+  // el punto fijado se queda marcado aunque el puntero se haya ido
+  for (const [k, q] of chartPts.entries())
+    q.dot?.setAttribute("r", k === state.pinnedYear ? 5 : 3);
   if (!p) {
     chartTip.hidden = true;
     if (guia) guia.setAttribute("opacity", 0);
-    for (const q of chartPts) q.dot?.setAttribute("r", 3);
     return;
   }
   const ind = INDICATORS.find(x => x.id === state.indicator);
@@ -1220,7 +1271,7 @@ function paintTip(i) {
   chartTip.style.left =
     `${Math.min(Math.max(p.x * k, mitad), chart.clientWidth - mitad)}px`;
   if (guia) { guia.setAttribute("x1", p.x); guia.setAttribute("x2", p.x); guia.setAttribute("opacity", 1); }
-  for (const q of chartPts) q.dot?.setAttribute("r", q === p ? 5 : 3);
+  p.dot?.setAttribute("r", 5);
 }
 
 // -------- sliders (pestaña Controles). Los tres son estado, no plantilla:
@@ -1362,17 +1413,27 @@ function resize() {
 }
 addEventListener("resize", resize);
 resize();
-{ // preferencia guardada; si no la hay, la del sistema
+{ // preferencia guardada; si no la hay, claro (el mapa se lee mejor sobre él)
   let saved = null;
   try { saved = localStorage.getItem(THEME_KEY); } catch { /* modo privado */ }
-  applyTheme(saved ?? (matchMedia("(prefers-color-scheme: light)").matches
-    ? "light" : "dark"));
+  applyTheme(saved ?? "light");
 }
 buildLabels();
 paintStory();
 openTab("tab-data");
+// Los dos paneles arrancan cerrados: lo primero que se ve es el globo entero,
+// y los botones de abajo dicen qué hay detrás de cada uno.
+paneles.story(true);
+paneles.dock(true);
 applyLang(initialLang());     // ya llama a recolor(), que pinta leyenda y gráfica
 requestAnimationFrame(animate);
 
 // hook de depuración (consola / pruebas automatizadas)
-window.__ps = { state, units, globe, camera, select, applyLang, openTab, drawChart };
+window.__ps = {
+  state, units, globe, camera, select, applyLang, openTab, drawChart,
+  // Costura de prueba: cada toque enviado por CDP cuesta ~300 ms de ida y
+  // vuelta, así que un doble toque automatizado nunca cabe en la ventana real.
+  // Ensancharla desde la prueba permite ejercitar el gesto de verdad —los
+  // mismos eventos táctiles, el mismo camino— sin relajarla para la gente.
+  setDobleMs: ms => { DOBLE_MS = ms; },
+};

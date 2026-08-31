@@ -107,6 +107,9 @@ if (diana) {
   // sin esperas ni consultas entre los dos toques: cada ida y vuelta a la
   // página cuesta cientos de milisegundos y se saldría de la ventana del
   // doble toque, haciendo fallar la prueba por lenta y no por el código
+  // cada toque por CDP cuesta cientos de ms; se ensancha la ventana para que
+  // la prueba mida el gesto y no la latencia del protocolo
+  await page.evaluate(() => window.__ps.setDobleMs(4000));
   const p = [{ x: diana.x, y: diana.y, id: 1 }];
   await touch("touchStart", p);
   await touch("touchEnd", []);
@@ -114,6 +117,7 @@ if (diana) {
   await touch("touchEnd", []);
   await page.waitForTimeout(1000);
   nivel1 = await page.evaluate(() => window.__ps.state.level);
+  await page.evaluate(() => window.__ps.setDobleMs(500));
 }
 
 // ---- pellizco: separar los dedos acerca, juntarlos aleja ----
