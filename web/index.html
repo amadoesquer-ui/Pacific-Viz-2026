@@ -19,6 +19,8 @@
     --lagoon-soft: rgba(86, 214, 194, 0.12);
     --sand: #f2d98d;
     --sand-line: rgba(242, 217, 141, 0.4);
+    --label-ink: #ffffff;
+    --label-halo: rgba(6, 13, 24, 0.95);
     --ui: "Archivo", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
     color-scheme: dark;
@@ -34,6 +36,8 @@
     --lagoon-soft: rgba(10, 125, 108, 0.14);
     --sand: #8a6a12;
     --sand-line: rgba(138, 106, 18, 0.45);
+    --label-ink: #0f1f2e;
+    --label-halo: rgba(255, 255, 255, 0.95);
     color-scheme: light;
   }
   * { box-sizing: border-box; margin: 0; }
@@ -212,6 +216,22 @@
      nuestros: se le da el fondo del panel para que no salga blanco en oscuro */
   #lang-select option { background: var(--abyss); color: var(--ink); }
 
+  /* ------- etiquetas de los polígonos -------
+     Van en HTML y no como sprites dentro de la escena: el texto queda nítido a
+     cualquier zoom, se traduce con el resto del interfaz y hereda los colores
+     del tema. El halo con text-shadow es lo que las hace legibles tanto sobre
+     el rojo oscuro de una anomalía alta como sobre el océano claro. */
+  #labels { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  #labels div {
+    position: absolute; transform: translate(-50%, -50%);
+    font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; white-space: nowrap;
+    color: var(--label-ink);
+    text-shadow: 0 0 3px var(--label-halo), 0 0 6px var(--label-halo),
+                 0 0 10px var(--label-halo);
+    transition: opacity .2s;
+  }
+
   .slider-row { display: flex; align-items: center; gap: 10px; }
   .slider-row input[type="range"] { flex: 1; accent-color: var(--lagoon); }
   .slider-row .val { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); width: 6ch; }
@@ -340,6 +360,8 @@
 </head>
 <body>
 <canvas id="scene" aria-label="Globo 3D del Pacífico con volúmenes climáticos por región"></canvas>
+<!-- nombres de las unidades, proyectados sobre el lienzo desde main.js -->
+<div id="labels" aria-hidden="true"></div>
 
 <header>
   <div class="wordmark">Pacific <span>Strata</span></div>

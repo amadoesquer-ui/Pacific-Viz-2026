@@ -269,6 +269,33 @@ function asPolys(geometry) {
                                      : geometry.coordinates;
 }
 
+// -------- punto de anclaje de la etiqueta: el centroide de la parte MAYOR del
+// polígono, no el del conjunto. Estas ZEE llegan partidas por el antimeridiano
+// y repartidas en archipiélagos, y el centroide global de Kiribati o de la
+// Polinesia Francesa cae en mar de nadie, a veces dentro de la ZEE vecina.
+function anchorOf(feature) {
+  let mejor = null, mejorArea = -1;
+  for (const poly of asPolys(feature.geometry)) {
+    const ring = poly[0];
+    // shoelace: área con signo y centroide del anillo exterior
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const [x0, y0] = ring[i], [x1, y1] = ring[(i + 1) % ring.length];
+      const f = x0 * y1 - x1 * y0;
+      a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f;
+    }
+    a /= 2;
+    const area = Math.abs(a);
+    if (area > mejorArea) {
+      mejorArea = area;
+      mejor = area < 1e-9
+        ? [ring[0][1], ring[0][0]]                    // anillo degenerado
+        : [cy / (6 * a), cx / (6 * a)];               // [lat, lon]
+    }
+  }
+  return { ll: mejor, area: mejorArea };
+}
+
 // -------- contorno de la unidad, pegado al globo. Sin él las 22 ZEE vecinas
 // se leen como una sola mancha: comparten frontera exacta —son particiones del
 // mismo mar— y en la vista plana no hay sombra ni hueco que las separe.
@@ -345,6 +372,9 @@ function buildUnits(fc, level) {
     });
 
     group.add(outlineOf(f, outlineMat));
+    const anc = anchorOf(f);
+    unit.anchor = anc.ll;
+    unit.anchorArea = anc.area;      // prioridad al resolver solapes
 
     units[level].push(unit);
     unitById[id] = unit;
@@ -445,6 +475,13 @@ function recolor() {
       u.flatIndex = series.reduce((best, v, i) => v === null ? best : i, 0);
       const dim = state.selected && state.selected !== u;
       u.slabs.forEach((s, i) => {
+        // Un año sin dato no se dibuja, pero su sitio en la pila se respeta:
+        // las alturas salen del índice, así que queda el hueco. Antes se
+        // pintaba de gris y, como los huecos se concentran en los años
+        // recientes, al seleccionar una unidad su cara superior pasaba del
+        // color del dato a un gris: hacías clic en algo rojo y se volvía gris.
+        // Ocultándolos, la losa de arriba vuelve a ser la que se veía plana.
+        s.hasData = series[i] !== null && series[i] !== undefined;
         const c = colorFor(series[i], dom);
         if (dim) c.multiplyScalar(DIM);
         for (const m of s.meshes) m.material.color.copy(c);
@@ -529,13 +566,90 @@ function animate(now) {
         }
         // se oculta al terminar de plegarse, no al deseleccionar: si no, la
         // pila desaparecería de golpe en vez de bajar
-        const visible = isSel || i === u.flatIndex ||
-                        Math.abs(escala - plano) > 1e-4;
+        const visible = s.hasData !== false &&
+                        (isSel || i === u.flatIndex ||
+                         Math.abs(escala - plano) > 1e-4);
         for (const m of s.meshes) m.visible = visible;
       }
     }
   }
+  placeLabels();
   renderer.render(scene, camera);
+}
+
+// -------- etiquetas: se proyecta el ancla de cada unidad a coordenadas de
+// pantalla en cada cuadro. Se ocultan las de la cara oculta del globo —el
+// producto escalar con la dirección a la cámara da la vuelta— porque si no
+// aparecerían los nombres del otro lado flotando sobre el hemisferio visible.
+const labelBox = document.getElementById("labels");
+const _lp = new THREE.Vector3();
+
+function buildLabels() {
+  labelBox.innerHTML = "";
+  for (const level of ["region", "country"]) {
+    for (const u of units[level]) {
+      if (!u.anchor) continue;
+      const el = document.createElement("div");
+      el.textContent = u.name;
+      labelBox.appendChild(el);
+      u.label = el;
+      // el ancho se mide una vez y se guarda: consultarlo en cada cuadro
+      // forzaría un recálculo de estilo por etiqueta, 60 veces por segundo
+      u.labelW = el.offsetWidth;
+    }
+  }
+}
+
+const LABEL_H = 15;             // alto de la caja, en píxeles
+
+function placeLabels() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const candidatas = [];
+
+  for (const level of ["region", "country"]) {
+    for (const u of units[level]) {
+      if (!u.label) continue;
+      if (!u.group.visible) { u.label.style.display = "none"; continue; }
+
+      const [lat, lon] = u.anchor;
+      _lp.copy(polar2Cartesian(lat, lon, R)).applyMatrix4(globe.matrixWorld);
+      // de espaldas: el ancla mira al lado contrario de la cámara
+      const haciaCamara = _lp.clone().sub(globe.position).normalize()
+        .dot(camera.position.clone().sub(_lp).normalize());
+      _lp.project(camera);
+
+      if (haciaCamara <= 0.06 || Math.abs(_lp.x) > 1 || Math.abs(_lp.y) > 1) {
+        u.label.style.display = "none";
+        continue;
+      }
+      candidatas.push({
+        u, haciaCamara,
+        x: (_lp.x * 0.5 + 0.5) * w,
+        y: (-_lp.y * 0.5 + 0.5) * h,
+      });
+    }
+  }
+
+  // Se colocan de mayor a menor superficie y se descarta la que choque con una
+  // ya puesta. Sin esto, «Papúa Nueva Guinea» e «Islas Salomón» se pisaban y no
+  // se leía ninguna de las dos. El orden por área es estable al girar el globo,
+  // así que una etiqueta no parpadea por cambios de prioridad.
+  candidatas.sort((a, b) => b.u.anchorArea - a.u.anchorArea);
+  const puestas = [];
+  for (const c of candidatas) {
+    const mitad = c.u.labelW / 2;
+    const caja = { x0: c.x - mitad, x1: c.x + mitad,
+                   y0: c.y - LABEL_H / 2, y1: c.y + LABEL_H / 2 };
+    const choca = puestas.some(q =>
+      caja.x0 < q.x1 && caja.x1 > q.x0 && caja.y0 < q.y1 && caja.y1 > q.y0);
+    if (choca) { c.u.label.style.display = "none"; continue; }
+    puestas.push(caja);
+    c.u.label.style.display = "block";
+    c.u.label.style.left = `${c.x}px`;
+    c.u.label.style.top = `${c.y}px`;
+    // se apagan al acercarse al borde, donde el globo se ve de canto
+    c.u.label.style.opacity = Math.min(1, (c.haciaCamara - 0.06) * 6).toFixed(2);
+  }
 }
 
 // ------------------------------------------------------------------ picking
@@ -546,9 +660,11 @@ let downAt = null;
 function pickables() {
   const list = [];
   for (const u of units[state.level === "region" ? "region" : "country"]) {
-    // solo las losas: el contorno es un Group de líneas y no tiene userData
+    // solo las losas visibles: el contorno es un Group de líneas sin userData,
+    // y por el hueco de un año sin dato no debería poder seleccionarse nada
     if (u.group.visible)
-      for (const s of u.slabs) list.push(...s.meshes);
+      for (const s of u.slabs)
+        for (const m of s.meshes) if (m.visible) list.push(m);
   }
   return list;
 }
@@ -1134,6 +1250,7 @@ resize();
   applyTheme(saved ?? (matchMedia("(prefers-color-scheme: light)").matches
     ? "light" : "dark"));
 }
+buildLabels();
 paintStory();
 openTab("tab-data");
 applyLang(initialLang());     // ya llama a recolor(), que pinta leyenda y gráfica
