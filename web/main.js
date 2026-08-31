@@ -13,7 +13,15 @@ import { t, setLang, initialLang, LANGS, lang } from "./i18n.js";
 
 // ------------------------------------------------------------------ config
 const R = 100;                       // radio del globo
-const BASE_ALT = 0;                // separación del fondo de la pila
+// Holgura entre la esfera y el fondo de la pila. No es estética: la esfera y
+// las losas son dos aproximaciones POLIÉDRICAS de la misma superficie, y las
+// dos se hunden por dentro del arco entre sus vértices. La esfera baja 0.074;
+// la peor losa —Tuvalu, un cuadrilátero de 16 puntos que earcut trocea en
+// triángulos de ~7°— baja 0.219. A ras exacto ganaba la que menos se hundiera,
+// así que el azul del océano asomaba por encima del polígono. Levantándolas
+// 0.35 la más hundida (100.35 − 0.22 = 100.14) pasa holgada por encima de la
+// esfera (99.93), y siguen por debajo del contorno blanco de OUTLINE_R.
+const BASE_ALT = 0.35;             // separación del fondo de la pila
 const STACK_T = 2;                   // grosor total de la pila (todas las losas)
 const THICK_MIN = 1;                 // grosor de losa sin seleccionar (fracción del paso)
 // Altura de la pila SELECCIONADA, como múltiplo de la de las no seleccionadas:
@@ -584,7 +592,10 @@ function animate(now) {
         // 1, que es justo su posición ya apilada, y al seleccionar aparecían
         // colocadas de golpe, sin crecer. Manteniéndolas plegadas en la base,
         // la selección las hace subir desde el mapa.
-        const plano = R / s.r0;              // a ras: el escalado la baja
+        // a ras: el escalado la baja hasta el piso, que NO es la esfera sino
+        // BASE_ALT por encima; si no, la vista plana volvía a dejar la losa
+        // justo sobre la esfera y el océano asomaba por encima
+        const plano = (R + BASE_ALT) / s.r0;
         const target = isSel
           ? (s.r0 + i * gap + padFor(i, h)) / s.r0
           : plano;
@@ -786,27 +797,34 @@ function profundidadDe(local) {
 }
 
 document.getElementById("north-btn").addEventListener("click", () => {
-  // Meridianos verticales EN PANTALLA: lleva el eje N-S del globo al «arriba»
-  // de la cámara. (Al Y del mundo no sirve: la cámara está inclinada y
-  // quedaría el casquete polar de frente, con los meridianos en abanico.)
-  // Conserva la longitud que mira a la cámara para que el globo no dé
-  // bandazos: solo rueda hasta poner el ecuador de frente.
+  // «Alinear norte» es un GIRO PURO sobre el eje de visión: el punto que estás
+  // mirando no se mueve, solo se endereza el norte hacia arriba de la pantalla.
+  //
+  // Antes bajaba a la fuerza el punto de vista hasta el ecuador, así que el
+  // botón te llevaba de vuelta al ecuador mirases donde mirases —el usuario lo
+  // describió como «pone siempre el ecuador horizontal»—. Enderezar y
+  // desplazarse son dos cosas distintas, y el botón solo debería hacer la
+  // primera: el meridiano que pasa por el centro de la vista queda vertical y
+  // el punto central se queda donde estaba.
   const v = camera.position.clone().sub(globe.position).normalize(); // globo→cámara
   const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-  up.addScaledVector(v, -up.dot(v)).normalize();  // arriba de pantalla, ⟂ v
-  // punto que mira a la cámara, en coordenadas locales del globo…
-  const faceL = v.clone().applyQuaternion(_q.copy(globe.quaternion).invert());
-  faceL.setY(0);                                  // …bajado a su longitud del ecuador
-  if (faceL.lengthSq() < 1e-6) faceL.set(1, 0, 0); // mirando un polo: da igual cuál
-  faceL.normalize();
-  const north = new THREE.Vector3(0, 1, 0);
-  // rotación que lleva la base local (longitud, norte) a la de pantalla (v, up)
-  const mLocal = new THREE.Matrix4().makeBasis(
-    faceL, north, new THREE.Vector3().crossVectors(faceL, north));
-  const mView = new THREE.Matrix4().makeBasis(
-    v, up, new THREE.Vector3().crossVectors(v, up));
-  northTarget = new THREE.Quaternion()
-    .setFromRotationMatrix(mView.multiply(mLocal.transpose()));
+  up.addScaledVector(v, -up.dot(v)).normalize();     // arriba de pantalla, ⟂ v
+
+  // eje N-S del globo tal como está ahora, aplastado contra el plano de
+  // pantalla: es la dirección en que se ve «hacia el norte» desde la cámara
+  const n = new THREE.Vector3(0, 1, 0).applyQuaternion(globe.quaternion);
+  n.addScaledVector(v, -n.dot(v));
+  // mirando de frente a un polo el norte apunta hacia la cámara y no se
+  // proyecta: no hay giro que lo enderece, así que no se toca nada
+  if (n.lengthSq() < 1e-8) return;
+  n.normalize();
+
+  // ángulo con signo de n hasta up, medido alrededor del eje de visión
+  const ang = Math.atan2(
+    new THREE.Vector3().crossVectors(n, up).dot(v), n.dot(up));
+  // premultiplicar: v está en coordenadas de mundo, no del globo
+  northTarget = globe.quaternion.clone()
+    .premultiply(_q.setFromAxisAngle(v, ang));
 });
 
 canvas.addEventListener("pointerdown", e => {
