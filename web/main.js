@@ -78,7 +78,11 @@ const state = {
   selected: null,           // unit seleccionada (objeto unit)
   hoveredYear: null,        // índice del año bajo el cursor, en la gráfica
   pinnedYear: null,         // año fijado con un clic: sobrevive al puntero
-  separation: 0,            // 0 volumen … 1 estratos (reparte, no añade altura)
+  // Sin slider: la separación se queda en el mínimo, con las losas pegadas.
+  // Se conserva el 0 y la maquinaria que lo usa —sepFrac, pitchOf— porque es
+  // lo que mantiene la altura anclada, y devolver el control es volver a poner
+  // el input.
+  separation: 0,
   height: H_DEF,            // altura del seleccionado, × la de los no seleccionados
   opacity: 1,               // opacidad de las losas (1 = opacas)
   domain: {},               // por indicador: {min, max, abs}
@@ -592,6 +596,10 @@ function animate(now) {
       }
     }
   }
+  // la altura de los estratos entra en el tamaño de la silueta, así que el
+  // objetivo se recalcula en cada cuadro y no solo al abrir el panel
+  ajustarEncuadre();
+  aplicarEncuadre();
   placeLabels();
   renderer.render(scene, camera);
 }
@@ -1062,30 +1070,101 @@ function ajustarPaneles() {
 // desplazamiento entra en la matriz de proyección, con lo que el rayo del
 // picking y la proyección de las etiquetas se corrigen solos. Moviendo
 // globe.position habría chocado con el desplazamiento manual de dos dedos.
-function ajustarEncuadre() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  let bajar = 0;
-  if (ESTRECHO()) {
-    for (const id of ["story", "dock"]) {
-      const el = document.getElementById(id);
-      if (el.classList.contains("collapsed")) continue;
-      // offsetTop + offsetHeight y NO getBoundingClientRect: el segundo
-      // incluye la transformación, y como el panel entra deslizándose, en el
-      // instante en que se mide todavía está fuera de la pantalla —daba un
-      // borde negativo y el encuadre no se movía nunca—. La caja de diseño ya
-      // es la definitiva desde el primer cuadro.
-      const abajo = el.offsetTop + el.offsetHeight;
-      // el centro del hueco libre queda a la mitad de ese borde respecto del
-      // centro de la pantalla, así que ese es el desplazamiento
-      bajar = Math.max(bajar, abajo / 2);
+// -------- silueta de los DATOS: la franja de pantalla que ocupan las pilas
+// que se están viendo, del pie de la más baja al techo de la más alta.
+//
+// La primera versión centraba la esfera entera, que tiene la ventaja de no
+// depender del giro, pero medido resultó inútil: con esta inclinación de
+// cámara el Pacífico no cae en el centro del disco sino bastante por encima,
+// así que centrar la esfera dejaba las pilas por encima de la franja libre.
+// Lo que hay que mantener a la vista son las pilas, no el limbo del globo.
+//
+// Se proyectan las anclas de las unidades visibles a dos radios, el pie y el
+// techo, y de ahí salen los dos bordes. Es determinista —sale de la geometría,
+// no de una constante— y responde a la altura de los estratos: al subirla, el
+// techo sube, la franja crece y el encuadre baja más.
+const _ext = new THREE.Vector3();
+
+function extensionDatos() {
+  const h = canvas.clientHeight;
+  const techo = R + STACK_T * Math.max(state.height, 1);
+  let arriba = Infinity, abajo = -Infinity;
+
+  for (const u of units[state.level]) {
+    if (!u.group.visible || !u.anchor) continue;
+    const [lat, lon] = u.anchor;
+    for (const radio of [R, techo]) {
+      _ext.copy(polar2Cartesian(lat, lon, radio)).applyMatrix4(globe.matrixWorld);
+      // de espaldas al observador: no se ve, no cuenta para el encuadre
+      const haciaCamara = _ext.clone().sub(globe.position).normalize()
+        .dot(camera.position.clone().sub(_ext).normalize());
+      if (haciaCamara <= 0.05) continue;
+      const y = (-_ext.project(camera).y * 0.5 + 0.5) * h;
+      arriba = Math.min(arriba, y);
+      abajo = Math.max(abajo, y);
     }
   }
+  return arriba > abajo ? null : { arriba, abajo };
+}
 
-  // Solo se desplaza: el acercamiento, la inclinación y el giro son del
-  // usuario y no se tocan. Si con su zoom el globo no cabe en la franja libre,
-  // se verá recortado, que es lo que él ha elegido.
-  if (bajar < 1) camera.clearViewOffset();
-  else camera.setViewOffset(w, h, 0, -bajar, w, h);
+// Alto que se reserva abajo para el botón «alinear norte», que flota sobre el
+// globo y no debería quedar encima de la silueta.
+const RESERVA_INFERIOR = 52;
+
+// Devuelve cuántos píxeles hay que bajar el contenido para que la silueta
+// quede centrada en la franja que el panel deja libre. Cero si no hay panel.
+function encuadreObjetivo() {
+  if (!ESTRECHO()) return 0;
+  let tapadoHasta = 0;
+  for (const id of ["story", "dock"]) {
+    const el = document.getElementById(id);
+    if (el.classList.contains("collapsed")) continue;
+    // offsetTop + offsetHeight y NO getBoundingClientRect: el segundo incluye
+    // la transformación, y como el panel entra deslizándose, en el instante en
+    // que se mide todavía está fuera de la pantalla —daba un borde negativo y
+    // el encuadre no se movía nunca—. La caja de diseño ya es la definitiva
+    // desde el primer cuadro.
+    tapadoHasta = Math.max(tapadoHasta, el.offsetTop + el.offsetHeight);
+  }
+  if (!tapadoHasta) return 0;
+
+  const h = canvas.clientHeight;
+  // se mide sin el desplazamiento puesto, o se realimentaría consigo mismo
+  const view = camera.view;
+  camera.clearViewOffset();
+  const ext = extensionDatos();
+  if (view?.enabled)
+    camera.setViewOffset(view.fullWidth, view.fullHeight,
+                         view.offsetX, view.offsetY, view.width, view.height);
+  if (!ext) return 0;
+
+  const libreDesde = tapadoHasta;
+  const libreHasta = h - RESERVA_INFERIOR;
+
+  // Centrar las pilas en la franja sirve para los dos casos: si caben quedan
+  // holgadas, y si no caben —el globo puede ser más alto que la franja con el
+  // zoom que haya elegido el usuario— el recorte se reparte por igual arriba y
+  // abajo, que es lo mejor posible sin tocar su acercamiento.
+  const alto = ext.abajo - ext.arriba;
+  const deseado = libreDesde + (libreHasta - libreDesde - alto) / 2;
+  return Math.max(0, deseado - ext.arriba);
+}
+
+// El desplazamiento se interpola en el bucle de dibujo en vez de saltar: el
+// panel entra deslizándose y el globo tiene que acompañarlo.
+let encuadre = 0, encuadreMeta = 0;
+
+function ajustarEncuadre() {
+  encuadreMeta = encuadreObjetivo();
+}
+
+function aplicarEncuadre() {
+  const meta = encuadreMeta;
+  encuadre = REDUCED || Math.abs(meta - encuadre) < 0.5
+    ? meta : lerp(encuadre, meta, 0.16);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (encuadre < 0.5) camera.clearViewOffset();
+  else camera.setViewOffset(w, h, 0, -encuadre, w, h);
 }
 
 // -------- relato por pasos: un párrafo a la vez, con Anterior / Siguiente.
@@ -1313,15 +1392,6 @@ function paintTip(i) {
 // -------- sliders (pestaña Controles). Los tres son estado, no plantilla:
 // su texto se recalcula, no se traduce con data-i18n, y por eso applyLang los
 // vuelve a disparar con un evento «input» sintético.
-const sep = document.getElementById("sep");
-const sepVal = document.getElementById("sep-val");
-sep.addEventListener("input", () => {
-  state.separation = +sep.value;
-  sepVal.textContent = state.separation < 0.01 ? t("val_volume")
-                     : Math.round(sepFrac() * 100) + " %";
-  queueRebuild();   // la separación reparte el paso: cambia el grosor de la losa
-});
-
 const hgt = document.getElementById("height");
 const hgtVal = document.getElementById("height-val");
 hgt.addEventListener("input", () => {
@@ -1416,7 +1486,6 @@ function applyLang(next) {
       b.textContent = t(ind.id, null, ind.name);
     }
 
-    sep.dispatchEvent(new Event("input"));
     hgt.dispatchEvent(new Event("input"));
     opa.dispatchEvent(new Event("input"));
 

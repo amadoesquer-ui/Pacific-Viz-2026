@@ -402,6 +402,16 @@
     /* al plegarse suben, no bajan: es de donde vienen */
     .story.collapsed, .dock.collapsed { transform: translateY(calc(-100% - 130px)); }
 
+    /* el panel se acorta para dejarle sitio al globo: la gráfica es lo que
+       más ocupa, y a 118 px las 24 marcas siguen leyéndose */
+    .dock .pane { padding: 10px 12px 12px; }
+    #chart { height: 118px; }
+    .chart-empty { height: 118px; font-size: 12px; }
+    .ribbon { margin-bottom: 10px; }
+    .ribbon button { padding: 6px 11px; }
+    .chart-head { margin-bottom: 2px; }
+    .drill { margin-top: 8px; padding: 6px 12px; }
+
     .syn-badge { display: none; }
     .north { top: auto; bottom: 12px; right: 10px; }
   }
@@ -491,13 +501,6 @@
         <div class="slider-row">
           <input id="height" type="range" min="1" max="10" step="0.1" value="5" />
           <span class="val" id="height-val">5 &times;</span>
-        </div>
-      </div>
-      <div>
-        <label class="head" for="sep" data-i18n="lbl_sep">Separación de estratos</label>
-        <div class="slider-row">
-          <input id="sep" type="range" min="0" max="1" step="0.01" value="0" />
-          <span class="val" id="sep-val">volumen</span>
         </div>
       </div>
       <div>
