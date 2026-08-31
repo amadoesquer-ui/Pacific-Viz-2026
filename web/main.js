@@ -504,24 +504,34 @@ function animate(now) {
       const h = isSel ? state.hoveredYear : null;
       for (const s of u.slabs) {
         const i = s.yearIndex;
-        // Sin seleccionar, la unidad se lee como un mapa plano: se muestra un
-        // solo estrato —el más reciente CON dato— bajado a ras del globo. La
-        // pila entera solo aparece al seleccionar. Antes se dibujaban las 24
-        // losas siempre, y 22 ZEE vecinas apiladas eran una única masa.
-        const plano = !isSel;
-        const visible = isSel || i === u.flatIndex;
-        for (const m of s.meshes) m.visible = visible;
-        if (!visible) continue;
-        const target = plano
-          ? R / s.r0                       // a ras: el escalado lo baja
-          : (s.r0 + i * gap + padFor(i, h)) / s.r0;
+        // Sin seleccionar, la unidad se lee como un mapa plano: un solo
+        // estrato —el más reciente CON dato— a ras del globo. La pila entera
+        // aparece al seleccionar. Antes se dibujaban las 24 losas siempre, y
+        // 22 ZEE vecinas apiladas eran una única masa.
+        //
+        // Las losas ocultas SIGUEN animándose hacia la posición plana en vez
+        // de congelarse: si se les salta la interpolación se quedan en escala
+        // 1, que es justo su posición ya apilada, y al seleccionar aparecían
+        // colocadas de golpe, sin crecer. Manteniéndolas plegadas en la base,
+        // la selección las hace subir desde el mapa.
+        const plano = R / s.r0;              // a ras: el escalado la baja
+        const target = isSel
+          ? (s.r0 + i * gap + padFor(i, h)) / s.r0
+          : plano;
         const lit = h === i;
+        let escala = 0;
         for (const m of s.meshes) {
           const cur = m.scale.x;
           const next = REDUCED ? target : lerp(cur, target, 0.14);
-          m.scale.setScalar(Math.abs(next - target) < 1e-4 ? target : next);
+          escala = Math.abs(next - target) < 1e-4 ? target : next;
+          m.scale.setScalar(escala);
           m.material.emissive.setHex(lit ? HOVER_EMISSIVE : 0x000000);
         }
+        // se oculta al terminar de plegarse, no al deseleccionar: si no, la
+        // pila desaparecería de golpe en vez de bajar
+        const visible = isSel || i === u.flatIndex ||
+                        Math.abs(escala - plano) > 1e-4;
+        for (const m of s.meshes) m.visible = visible;
       }
     }
   }
@@ -653,6 +663,7 @@ function select(u) {
   if (prev && prev !== u) rebuildUnit(prev);
   if (u && u !== prev) rebuildUnit(u);
   recolor();            // cambia qué pilas van atenuadas; ya rehace la gráfica
+  paintDrill();         // recolor solo llega aquí si hay gráfica que pintar
 }
 
 // El año destacado vive en dos sitios: la losa del globo (la mueve y la
@@ -662,9 +673,27 @@ function setHoveredYear(i) {
   paintTip(i);
 }
 
+// El botón de bajar y el de volver son el mismo, porque nunca hacen falta a la
+// vez: en el nivel Pacífico baja a los países de la subregión seleccionada, y
+// en el nivel país vuelve. En el nivel país está siempre disponible, aunque no
+// haya nada seleccionado —por eso vive fuera de la gráfica, que ahí está
+// oculta—, que era lo que faltaba: se podía entrar y no salir más que por la
+// miga de navegación.
+function paintDrill() {
+  if (state.level === "country") {
+    drillBtn.hidden = false;
+    drillBtn.dataset.mode = "back";
+    drillBtn.textContent = t("btn_drill_back");
+    return;
+  }
+  drillBtn.dataset.mode = "drill";
+  drillBtn.textContent = t("btn_drill");
+  drillBtn.hidden = state.selected?.level !== "region";
+}
+
 drillBtn.addEventListener("click", () => {
-  if (!state.selected || state.selected.level !== "region") return;
-  enterRegion(state.selected.id);
+  if (drillBtn.dataset.mode === "back") return exitRegion();
+  if (state.selected?.level === "region") enterRegion(state.selected.id);
 });
 
 function enterRegion(regionId) {
@@ -674,6 +703,7 @@ function enterRegion(regionId) {
   for (const u of units.region) u.group.visible = false;
   for (const u of units.country) u.group.visible = u.region === regionId;
   paintCrumb();
+  paintDrill();
 }
 
 // La miga se pinta aparte de enterRegion/exitRegion porque también hay que
@@ -694,6 +724,7 @@ function exitRegion() {
   for (const u of units.country) u.group.visible = false;
   for (const u of units.region) u.group.visible = true;
   paintCrumb();
+  paintDrill();
 }
 
 // ------------------------------------------------------------------ controles
@@ -914,7 +945,7 @@ function drawChart() {
 
   chart._guia = guia;
   animarTrazo(linea);
-  drillBtn.hidden = u.level !== "region";
+  paintDrill();
 }
 
 // Trazado que avanza. Con reduced-motion se pinta de golpe.
@@ -1080,6 +1111,7 @@ function applyLang(next) {
 
     paintStory();
     paintCrumb();
+    paintDrill();
     recolor();                      // leyenda y grafica
   });
   for (const b of langBox.children)

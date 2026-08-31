@@ -400,8 +400,11 @@
       </div>
       <svg id="chart" role="img" aria-labelledby="chart-ind chart-who"></svg>
       <div class="tip" id="chart-tip" hidden></div>
-      <button class="drill" id="p-drill" hidden data-i18n="btn_drill">Ver países de la subregión &rarr;</button>
     </div>
+
+    <!-- fuera de chart-wrap: al bajar a nivel país no hay nada seleccionado y
+         la gráfica está oculta, pero el botón de volver tiene que seguir ahí -->
+    <button class="drill" id="p-drill" hidden></button>
   </div>
 
   <div class="pane" id="pane-ctrl" role="tabpanel" aria-labelledby="tab-ctrl" hidden>
