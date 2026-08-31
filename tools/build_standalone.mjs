@@ -178,8 +178,8 @@ let out = html
   // el importmap y el <script src> se sustituyen por las fuentes incrustadas
   .replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, "")
   .replace(/<script type="module" src="main\.js"><\/script>/, () => incrustado)
-  .replace("<title>Pacific Data Strata — prototipo</title>",
-           () => "<title>Pacific Data Strata — prototipo (autocontenido)</title>");
+  .replace("<title>Pacific Data Strata — final submission PacificViz Challenge</title>",
+           () => "<title>Pacific Data Strata — final submission PacificViz Challenge (autocontenido)</title>");
 
 // las sustituciones anteriores tienen que haber ocurrido todas
 for (const resto of ['src="main.js"', "importmap", "fonts.googleapis.com"]) {
