@@ -10,7 +10,7 @@
  * el nombre del indicador y cae al `ind.name` del JSON si falta la clave.
  */
 // El orden del selector: inglés, francés y español al final. El idioma por
-// omisión sigue siendo el español (lo decide initialLang, no este orden).
+// omisión sigue siendo el inglés (lo decide initialLang, no este orden).
 export const LANGS = [
   ["en", "English"],
   ["fr", "Français"],
@@ -202,7 +202,7 @@ export const DICT = {
 const KEY = "pacific-strata:lang";
 const SUPPORTED = LANGS.map(([id]) => id);
 
-export let lang = "es";
+export let lang = "en";
 
 /** Traduce una clave. `vars` rellena los {marcadores}. Si la clave no existe
  *  (p. ej. un indicador nuevo del dataset todavía sin traducir), devuelve
@@ -213,7 +213,7 @@ export function t(key, vars = null, fallback = null) {
   return s;
 }
 
-/** Idioma inicial: el guardado, si no el del navegador, si no español. */
+/** Idioma inicial: el guardado, si no el del navegador, si no inglés. */
 export function initialLang() {
   let saved = null;
   try { saved = localStorage.getItem(KEY); } catch { /* modo privado */ }
@@ -222,7 +222,7 @@ export function initialLang() {
     const base = nav.slice(0, 2).toLowerCase();
     if (SUPPORTED.includes(base)) return base;
   }
-  return "es";
+  return "en";
 }
 
 /** Fija el idioma y repinta los nodos estáticos marcados en el HTML:
@@ -230,7 +230,7 @@ export function initialLang() {
  *  data-i18n-label → aria-label (y title, que muestran lo mismo).
  *  Lo que se genera desde JS lo repinta quien lo generó, en el callback. */
 export function setLang(next, onChange) {
-  lang = SUPPORTED.includes(next) ? next : "es";
+  lang = SUPPORTED.includes(next) ? next : "en";
   document.documentElement.lang = lang;
   try { localStorage.setItem(KEY, lang); } catch { /* modo privado */ }
 
