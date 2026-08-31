@@ -1,0 +1,42 @@
+# Publica web/ tal cual en GitHub Pages. No hay paso de compilación: el
+# tablero es JS de módulos servido directo, con three.js resuelto por
+# importmap desde CDN — lo único que hace este workflow es empaquetar la
+# carpeta y subirla.
+#
+# Requiere un ajuste de una sola vez, a mano: Settings → Pages → Source →
+# "GitHub Actions". Sin eso el despliegue falla con un error claro, no en
+# silencio.
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    # así una actualización del cuaderno o de data_prep no dispara un
+    # despliegue que no cambia nada de lo publicado
+    paths: ["web/**"]
+  workflow_dispatch:      # publicar bajo demanda sin esperar a un push
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# si se encadenan dos pushes rápidos, solo termina el despliegue del último;
+# cancelar el anterior evita que un despliegue viejo sobrescriba al nuevo
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: despliegue
+        uses: actions/deploy-pages@v4
