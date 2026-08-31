@@ -165,7 +165,17 @@ La descarga de Marine Regions son 354 MB y está excluida del repo
 - **Valores regionales** = media simple de los países **con dato** (declarado
   en el panel); en producción decidir ponderación (área ZEE, población…) y
   declararla.
-- **Traducciones**: `web/i18n.js` tiene 44 claves × 3 idiomas. Las claves de
+- **Táctil**: el lienzo lleva `touch-action: none`, y no es cosmético. Sin él
+  el navegador considera el arrastre candidato a desplazar la página, se queda
+  con el gesto, emite `pointercancel` y deja de mandar `pointermove`: de 24
+  movimientos llegaban 3 y el globo giraba 5° y se paraba. Que el `body` no
+  tenga scroll no basta, la decisión del gesto es previa. `npm run smoke:touch`
+  lo comprueba con eventos táctiles reales por CDP — con `PointerEvent`
+  sintéticos la prueba pasaría aun con el fallo puesto.
+- **Topónimos**: viajan en el GeoJSON (`name`, `name_en`, `name_fr`), no en
+  `i18n.js`. Son datos, y tenerlos en los dos sitios obligaría a mantener dos
+  listas de los mismos 22 territorios.
+- **Traducciones**: `web/i18n.js` tiene 56 claves × 3 idiomas. Las claves de
   indicador son el `id` del dataset, así que un indicador nuevo sin traducir
   cae al `name` que trae el JSON en vez de romper el interfaz.
 - Con 24 años, si notas carga inicial lenta, baja `CURV.region` de 2.0 a 3.0 en

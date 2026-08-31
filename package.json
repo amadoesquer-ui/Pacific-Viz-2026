@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "smoke": "node tools/smoke.mjs",
-    "build": "node tools/build_standalone.mjs"
+    "build": "node tools/build_standalone.mjs",
+    "smoke:touch": "node tools/smoke-touch.mjs"
   },
   "repository": {
     "type": "git",

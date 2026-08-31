@@ -19,6 +19,7 @@ export const DICT = {
   es: {
     crumb: "Pacífico · subregiones",
     crumb_suffix: "países y territorios",
+    crumb_back: "← Pacífico",
     lbl_indicators: "Indicadores",
     lbl_height: "Altura del seleccionado",
     lbl_sep: "Separación de estratos",
@@ -78,6 +79,7 @@ export const DICT = {
   en: {
     crumb: "Pacific · subregions",
     crumb_suffix: "countries & territories",
+    crumb_back: "← Pacific",
     lbl_indicators: "Indicators",
     lbl_height: "Height of selection",
     lbl_sep: "Strata separation",
@@ -137,6 +139,7 @@ export const DICT = {
   fr: {
     crumb: "Pacifique · sous-régions",
     crumb_suffix: "pays et territoires",
+    crumb_back: "← Pacifique",
     lbl_indicators: "Indicateurs",
     lbl_height: "Hauteur de la sélection",
     lbl_sep: "Séparation des strates",

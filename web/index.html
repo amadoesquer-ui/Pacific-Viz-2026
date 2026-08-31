@@ -41,14 +41,28 @@
     color-scheme: light;
   }
   * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; }
+  html, body { height: 100%; overscroll-behavior: none; }
   body {
     background: var(--abyss);
     color: var(--ink);
     font-family: var(--ui);
     overflow: hidden;
   }
-  #scene { position: fixed; inset: 0; display: block; }
+  /* touch-action: none es imprescindible, no cosmético. Sin él, al arrastrar
+     con el dedo el navegador considera el gesto candidato a desplazar o hacer
+     zoom en la página; en cuanto lo decide se queda con el toque, emite
+     pointercancel y deja de mandar pointermove. Medido: de 24 movimientos solo
+     llegaban 3 antes del cancel, y el globo giraba 5° y se paraba — había que
+     levantar el dedo y volver a empezar. Que el body no tenga scroll no basta:
+     la decisión del gesto es previa e independiente.
+     Se pone SOLO en el lienzo: el cintillo de indicadores y los paneles
+     necesitan conservar su desplazamiento táctil normal. */
+  #scene {
+    position: fixed; inset: 0; display: block;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none;   /* nada de menú al mantener pulsado */
+  }
 
   /* ------- marca + miga ------- */
   header {

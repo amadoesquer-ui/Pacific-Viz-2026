@@ -79,8 +79,56 @@ NOMBRE_ES = {
     "Northern Mariana Islands": "Islas Marianas del Norte",
 }
 
+# El interfaz es trilingüe, así que los topónimos también viajan en los tres
+# idiomas dentro del GeoJSON: son datos, no cadenas de interfaz, y meterlos en
+# i18n.js obligaría a mantener dos listas de los mismos 22 territorios.
+NOMBRE_EN = {
+    "Fiji": "Fiji", "Papua New Guinea": "Papua New Guinea",
+    "Solomon Islands": "Solomon Islands", "Vanuatu": "Vanuatu",
+    "New Caledonia": "New Caledonia", "Samoa": "Samoa",
+    "American Samoa": "American Samoa", "Tonga": "Tonga",
+    "Tuvalu": "Tuvalu", "Cook Islands": "Cook Islands", "Niue": "Niue",
+    "Tokelau": "Tokelau", "Wallis and Futuna": "Wallis and Futuna",
+    "French Polynesia": "French Polynesia",
+    "Pitcairn Islands": "Pitcairn Islands",
+    "Federated States of Micronesia": "Micronesia (Fed. States)",
+    "Palau": "Palau", "Marshall Islands": "Marshall Islands",
+    "Kiribati": "Kiribati", "Nauru": "Nauru", "Guam": "Guam",
+    "Northern Mariana Islands": "Northern Mariana Islands",
+}
+
+NOMBRE_FR = {
+    "Fiji": "Fidji", "Papua New Guinea": "Papouasie-Nouvelle-Guinée",
+    "Solomon Islands": "Îles Salomon", "Vanuatu": "Vanuatu",
+    "New Caledonia": "Nouvelle-Calédonie", "Samoa": "Samoa",
+    "American Samoa": "Samoa américaines", "Tonga": "Tonga",
+    "Tuvalu": "Tuvalu", "Cook Islands": "Îles Cook", "Niue": "Niue",
+    "Tokelau": "Tokelau", "Wallis and Futuna": "Wallis-et-Futuna",
+    "French Polynesia": "Polynésie française",
+    "Pitcairn Islands": "Îles Pitcairn",
+    "Federated States of Micronesia": "Micronésie (États fédérés)",
+    "Palau": "Palaos", "Marshall Islands": "Îles Marshall",
+    "Kiribati": "Kiribati", "Nauru": "Nauru", "Guam": "Guam",
+    "Northern Mariana Islands": "Îles Mariannes du Nord",
+}
+
 REGION_ES = {"Melanesia": "Melanesia", "Polynesia": "Polinesia",
              "Micronesia": "Micronesia"}
+REGION_EN = {"Melanesia": "Melanesia", "Polynesia": "Polynesia",
+             "Micronesia": "Micronesia"}
+REGION_FR = {"Melanesia": "Mélanésie", "Polynesia": "Polynésie",
+             "Micronesia": "Micronésie"}
+
+
+def props_pais(iso, name, region):
+    return {"id": ISO3_A_ISO2[iso], "name": NOMBRE_ES[name],
+            "name_en": NOMBRE_EN[name], "name_fr": NOMBRE_FR[name],
+            "region": region}
+
+
+def props_region(region):
+    return {"id": region, "name": REGION_ES[region],
+            "name_en": REGION_EN[region], "name_fr": REGION_FR[region]}
 
 # World EEZ v12 identifica por ISO3, pero .STAT —y por tanto dataset.json—
 # usa ISO2. El id que se escribe en countries.json tiene que ser el del dataset,
@@ -310,7 +358,7 @@ def main(land_src, eez_src):
         zones_by_region[region].append(zone)
         country_feats.append(feature(
             split_antimeridian(zone),
-            {"id": ISO3_A_ISO2[iso], "name": NOMBRE_ES[name], "region": region}))
+            props_pais(iso, name, region)))
 
         land = land_by_iso3_ne.get(iso)
         if land is not None:
@@ -325,7 +373,7 @@ def main(land_src, eez_src):
         merged = simplificar(drop_slivers(unary_union(zones)), SIMPLIFY_REGION)
         region_feats.append(feature(
             split_antimeridian(merged),
-            {"id": region, "name": REGION_ES[region]}))
+            props_region(region)))
 
     print("Escribiendo salidas:")
     save(out / "regions.json", region_feats)
@@ -349,16 +397,14 @@ def main_eez_only(out, eez_src):
         zone = simplificar(eez_by_iso[iso], SIMPLIFY_COUNTRY)
         zones_by_region[region].append(zone)
         country_feats.append(feature(split_antimeridian(zone),
-                                     {"id": ISO3_A_ISO2[iso],
-                                      "name": NOMBRE_ES[name],
-                                      "region": region}))
+                                     props_pais(iso, name, region)))
 
     print("Disolviendo subregiones (misma fuente que los países)…")
     region_feats = []
     for region, zones in zones_by_region.items():
         merged = simplificar(drop_slivers(unary_union(zones)), SIMPLIFY_REGION)
         region_feats.append(feature(split_antimeridian(merged),
-                                    {"id": region, "name": REGION_ES[region]}))
+                                    props_region(region)))
 
     print("Escribiendo salidas:")
     save(out / "regions.json", region_feats)

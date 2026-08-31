@@ -8,7 +8,8 @@
  */
 import * as THREE from "three";
 import ConicPolygonGeometry from "three-conic-polygon-geometry";
-import { t, setLang, initialLang, LANGS } from "./i18n.js";
+// `lang` es un binding vivo del módulo: setLang lo reasigna y aquí se ve
+import { t, setLang, initialLang, LANGS, lang } from "./i18n.js";
 
 // ------------------------------------------------------------------ config
 const R = 100;                       // radio del globo
@@ -339,12 +340,16 @@ function buildUnits(fc, level) {
   const slabT = STACK_T / YEARS.length;
   for (const f of fc.features) {
     const { id, name, region } = f.properties;
+    // los topónimos viajan en el GeoJSON, no en i18n.js: son datos, y tenerlos
+    // en los dos sitios obligaría a mantener dos listas de los mismos lugares
+    const nombres = { es: name, en: f.properties.name_en ?? name,
+                      fr: f.properties.name_fr ?? name };
     const group = new THREE.Group();
     group.visible = level === "region";
     // flatIndex: qué estrato representa a la unidad en la vista plana. Lo
     // recalcula recolor() por indicador; el último año sirve de arranque para
     // las unidades que .STAT no cubre y que recolor() se salta.
-    const unit = { id, name, region, level, group, slabs: [],
+    const unit = { id, name, nombres, region, level, group, slabs: [],
                    flatIndex: YEARS.length - 1 };
 
     YEARS.forEach((year, i) => {
@@ -590,7 +595,7 @@ function buildLabels() {
     for (const u of units[level]) {
       if (!u.anchor) continue;
       const el = document.createElement("div");
-      el.textContent = u.name;
+      el.textContent = nameOf(u);
       labelBox.appendChild(el);
       u.label = el;
       // el ancho se mide una vez y se guarda: consultarlo en cada cuadro
@@ -601,6 +606,18 @@ function buildLabels() {
 }
 
 const LABEL_H = 15;             // alto de la caja, en píxeles
+
+// Al cambiar de idioma no basta con reescribir el texto: el ancho guardado
+// serviría para el idioma anterior y la supresión de solapes fallaría.
+function relabel() {
+  for (const level of ["region", "country"]) {
+    for (const u of units[level]) {
+      if (!u.label) continue;
+      u.label.textContent = nameOf(u);
+      u.labelW = u.label.offsetWidth;
+    }
+  }
+}
 
 function placeLabels() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -828,9 +845,9 @@ function paintCrumb() {
   if (state.level !== "country") { crumb.textContent = t("crumb"); return; }
   crumb.innerHTML = "";
   const back = document.createElement("button");
-  back.textContent = "← Pacífico";
+  back.textContent = t("crumb_back");
   back.addEventListener("click", exitRegion);
-  crumb.append(back, ` · ${unitById[state.regionId].name} · ${t("crumb_suffix")}`);
+  crumb.append(back, ` · ${nameOf(unitById[state.regionId])} · ${t("crumb_suffix")}`);
 }
 
 function exitRegion() {
@@ -941,6 +958,10 @@ storyNext.addEventListener("click", () => { storyStep++; paintStory(); });
 // longitud total de la línea y se lleva el desfase de esa longitud a cero, con
 // lo que la línea «avanza» de izquierda a derecha sin recalcular la ruta en
 // cada cuadro. Los puntos aparecen detrás del trazo, cada uno a su tiempo.
+// Nombre del lugar en el idioma activo. Cae al español si un territorio nuevo
+// llega sin traducir, igual que hace t() con los indicadores.
+const nameOf = u => u.nombres[lang] ?? u.name;
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const chart = document.getElementById("chart");
 const chartWrap = document.getElementById("chart-wrap");
@@ -965,13 +986,13 @@ function drawChart() {
   chartEmpty.hidden = !chartWrap.hidden;
   if (chartWrap.hidden) {
     chartEmpty.textContent = u
-      ? t("chart_nodata", { who: u.name })     // seleccionado pero sin serie
+      ? t("chart_nodata", { who: nameOf(u) })  // seleccionado pero sin serie
       : t("chart_empty");
     return;
   }
 
   document.getElementById("chart-ind").textContent = t(ind.id, null, ind.name);
-  document.getElementById("chart-who").textContent = u.name;
+  document.getElementById("chart-who").textContent = nameOf(u);
   document.getElementById("chart-uom").textContent = ind.unit;
 
   const w = chart.clientWidth || 600, h = chart.clientHeight || 176;
@@ -987,7 +1008,7 @@ function drawChart() {
   if (!conDato.length) {                 // la serie existe pero está vacía
     chartWrap.hidden = true;
     chartEmpty.hidden = false;
-    chartEmpty.textContent = t("chart_nodata", { who: u.name });
+    chartEmpty.textContent = t("chart_nodata", { who: nameOf(u) });
     return;
   }
   let lo = Math.min(...conDato), hi = Math.max(...conDato);
@@ -1225,6 +1246,7 @@ function applyLang(next) {
     hgt.dispatchEvent(new Event("input"));
     opa.dispatchEvent(new Event("input"));
 
+    relabel();          // los topónimos también cambian de idioma
     paintStory();
     paintCrumb();
     paintDrill();
