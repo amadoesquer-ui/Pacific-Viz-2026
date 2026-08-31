@@ -9,10 +9,12 @@
  * Las claves de indicador son el id del dataset, así que `t(ind.id)` traduce
  * el nombre del indicador y cae al `ind.name` del JSON si falta la clave.
  */
+// El orden del selector: inglés, francés y español al final. El idioma por
+// omisión sigue siendo el español (lo decide initialLang, no este orden).
 export const LANGS = [
-  ["es", "Español"],
   ["en", "English"],
   ["fr", "Français"],
+  ["es", "Español"],
 ];
 
 export const DICT = {

@@ -104,7 +104,15 @@ placeCamera();
 // Sin OrbitControls: arrastrar gira el PROPIO globo (libre, ambos ejes);
 // el botón «alinear norte» endereza el eje N-S; el botón central / dos
 // dedos lo desplazan y la rueda hace zoom moviendo la cámara.
-const ZOOM_MIN = 150, ZOOM_MAX = 650;
+const ZOOM_MAX = 650;
+// Lo cerca que se puede llegar no es una constante: depende de cuánto
+// sobresalga la pila más alta. El tope fijo de 150 dejaba las capas
+// demasiado lejos para mirarlas de canto contra el horizonte, que es una de
+// las formas de leerlas; pero bajarlo a secas metería la cámara dentro de los
+// estratos al subir la altura. Se calcula sobre la silueta, más un poco de aire
+// para que el techo de la pila no roce el plano cercano.
+const AIRE_ZOOM = 12;
+const zoomMin = () => radioSilueta() + AIRE_ZOOM;
 
 const ambient = new THREE.AmbientLight(theme.ambient, theme.ambientI);
 scene.add(ambient);
@@ -857,11 +865,45 @@ canvas.addEventListener("pointermove", e => {
   if (p.button === 1) panGlobe(dx, dy);               // botón central: mover
   else { rotateGlobe(dx, dy); northTarget = null; }   // giro libre
 });
-// la rueda y el pellizco acaban en el mismo sitio, para que los topes de zoom
-// sean los mismos por los dos caminos
+// -------- zoom en dos etapas: primero acercarse, después teleobjetivo.
+//
+// Acercarse tiene un techo que no es de gusto sino de geometría: el limbo del
+// globo está a asin(R/d) del eje de cámara, así que a distancia 127 queda a 52°
+// y con un campo de 38° se sale de cuadro. Por eso acercándose NO se llega a
+// ver la pila de canto contra el horizonte: solo un casquete pequeño y de
+// frente. Lo que agranda el limbo sin sacarlo del encuadre es estrechar el
+// campo de visión, como un teleobjetivo.
+//
+// Al acercar se estrecha PRIMERO el campo y solo después se recorta distancia.
+// El orden importa: cerrando distancia primero, el limbo se aleja del eje
+// (asin(R/d) crece al bajar d) y se pierde justo la vista que se buscaba. Con
+// el teleobjetivo se conserva la geometría de gran angular —el limbo sigue a
+// 19° del eje— y basta desplazar con dos dedos para llevarlo al centro y verlo
+// grande. Al alejar se deshace en orden inverso.
+const FOV_MAX = 38, FOV_MIN = 9;
+
+function ponerFov(grados) {
+  const nuevo = THREE.MathUtils.clamp(grados, FOV_MIN, FOV_MAX);
+  if (nuevo === camera.fov) return 1;
+  const consumido = nuevo / camera.fov;
+  camera.fov = nuevo;
+  camera.updateProjectionMatrix();
+  return consumido;
+}
+
 function zoomPor(factor) {
-  camera.position.setLength(THREE.MathUtils.clamp(
-    camera.position.length() * factor, ZOOM_MIN, ZOOM_MAX));
+  if (factor < 1) {                       // acercar: primero el teleobjetivo
+    const resto = factor / ponerFov(camera.fov * factor);
+    if (resto < 0.999)
+      camera.position.setLength(
+        Math.max(zoomMin(), camera.position.length() * resto));
+  } else {                                // alejar: primero la distancia
+    const d = camera.position.length();
+    const nuevoD = Math.min(ZOOM_MAX, d * factor);
+    camera.position.setLength(nuevoD);
+    const resto = factor * d / nuevoD;
+    if (resto > 1.001) ponerFov(camera.fov * resto);
+  }
 }
 
 canvas.addEventListener("wheel", e => {
@@ -1083,6 +1125,10 @@ function ajustarPaneles() {
 // techo, y de ahí salen los dos bordes. Es determinista —sale de la geometría,
 // no de una constante— y responde a la altura de los estratos: al subirla, el
 // techo sube, la franja crece y el encuadre baja más.
+// Radio de la esfera que contiene todo lo dibujado: el globo más lo que
+// sobresale la pila más alta. Sirve de tope al acercarse.
+const radioSilueta = () => (R + STACK_T * Math.max(state.height, 1)) * 1.04;
+
 const _ext = new THREE.Vector3();
 
 function extensionDatos() {
@@ -1406,6 +1452,10 @@ hgt.addEventListener("input", () => {
   hgtVal.textContent = state.height < 1.05 ? t("val_equal")
                      : (+state.height.toFixed(1)) + " ×";
   ajustarEncuadre();    // el techo de la pila sube o baja con la altura
+  // si estaba muy acercado, subir la altura metería la cámara dentro de la
+  // pila: se aparta lo mínimo, sin tocar el zoom si no hace falta
+  const minimo = zoomMin();
+  if (camera.position.length() < minimo) camera.position.setLength(minimo);
   queueRebuild();
 });
 
