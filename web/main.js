@@ -855,6 +855,7 @@ canvas.addEventListener("pointermove", e => {
 // la rueda y el pellizco acaban en el mismo sitio, para que los topes de zoom
 // sean los mismos por los dos caminos
 function zoomPor(factor) {
+  zoomManual = true;          // a partir de aquí manda el usuario, no el encuadre
   camera.position.setLength(THREE.MathUtils.clamp(
     camera.position.length() * factor, ZOOM_MIN, ZOOM_MAX));
 }
@@ -1030,6 +1031,9 @@ for (const [panelId, ocultar, mostrar] of
     btnMostrar.setAttribute("aria-expanded", !colapsado);
     // el SVG se dibuja al ancho que tenga: al volver, hay que rehacerlo
     if (!colapsado && panelId === "dock") drawChart();
+    // el panel acaba de cambiar de tamaño: hay que rehacer el encuadre después
+    // de que el navegador reajuste el diseño, no antes
+    requestAnimationFrame(ajustarEncuadre);
   };
   paneles[panelId] = set;
   document.getElementById(ocultar).addEventListener("click", () => set(true));
@@ -1050,6 +1054,61 @@ function ajustarPaneles() {
   const dock = document.getElementById("dock");
   if (!story.classList.contains("collapsed") && !dock.classList.contains("collapsed"))
     paneles.story(true);
+}
+
+// -------- encuadre: en móvil los paneles se abren ARRIBA, así que el globo se
+// baja por el hueco que queda libre en lugar de quedarse debajo del panel.
+//
+// Se hace con setViewOffset y no moviendo el globo ni la cámara: el
+// desplazamiento entra en la matriz de proyección, con lo que el rayo del
+// picking y la proyección de las etiquetas se corrigen solos. Moviendo
+// globe.position habría chocado con el desplazamiento manual de dos dedos.
+let distGuardada = null;      // la que había antes de abrir un panel
+let zoomManual = false;       // el usuario tocó la rueda o pellizcó desde entonces
+
+function ajustarEncuadre() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  let bajar = 0, tapadoHasta = 0;
+  if (ESTRECHO()) {
+    for (const id of ["story", "dock"]) {
+      const el = document.getElementById(id);
+      if (el.classList.contains("collapsed")) continue;
+      // offsetTop + offsetHeight y NO getBoundingClientRect: el segundo
+      // incluye la transformación, y como el panel entra deslizándose, en el
+      // instante en que se mide todavía está fuera de la pantalla —daba un
+      // borde negativo y el encuadre no se movía nunca—. La caja de diseño ya
+      // es la definitiva desde el primer cuadro.
+      const abajo = el.offsetTop + el.offsetHeight;
+      tapadoHasta = Math.max(tapadoHasta, abajo);
+      // el centro del hueco libre queda a la mitad de ese borde respecto del
+      // centro de la pantalla, así que ese es el desplazamiento
+      bajar = Math.max(bajar, abajo / 2);
+    }
+  }
+
+  if (bajar < 1) {
+    camera.clearViewOffset();
+    // al cerrar se devuelve el acercamiento que había, salvo que se haya
+    // pellizcado con el panel abierto: entonces manda lo que hizo el usuario
+    if (distGuardada !== null && !zoomManual) camera.position.setLength(distGuardada);
+    distGuardada = null;
+    return;
+  }
+
+  camera.setViewOffset(w, h, 0, -bajar, w, h);
+
+  // Desplazar no basta: en un teléfono el globo mide 399 px de radio sobre una
+  // pantalla de 412, o sea que es más ancho que la pantalla, y bajarlo solo
+  // mueve el recorte. Con un panel abierto se aleja lo justo para que quepa en
+  // la franja que queda libre; nunca se acerca, para no deshacer un pellizco.
+  const objetivo = (h - tapadoHasta) * 0.46;         // radio deseado, con aire
+  const necesaria = R * h /
+    (2 * Math.tan(camera.fov * Math.PI / 360) * Math.max(objetivo, 1));
+  const actual = camera.position.length();
+  if (necesaria > actual + 1) {
+    if (distGuardada === null) { distGuardada = actual; zoomManual = false; }
+    camera.position.setLength(Math.min(necesaria, ZOOM_MAX));
+  }
 }
 
 // -------- relato por pasos: un párrafo a la vez, con Anterior / Siguiente.
@@ -1409,6 +1468,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   ajustarPaneles();    // al estrechar, los dos paneles pasan a competir por el sitio
+  ajustarEncuadre();   // el hueco libre para el globo cambia con la ventana
   drawChart();         // el SVG se dibuja al ancho del panel, que cambio
 }
 addEventListener("resize", resize);

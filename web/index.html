@@ -365,30 +365,45 @@
   }
   .tabs .toggle { align-self: center; margin-right: 8px; }
 
+  /* ------------------------------------------------------------ móvil -------
+     En pantalla estrecha el espacio vertical es el recurso escaso, así que
+     todo lo que abre se agrupa ARRIBA —idioma, miga, los dos botones y el
+     panel que esté abierto— y abajo no queda más que «alinear norte». El globo
+     se desplaza hacia abajo por el hueco que libera el panel (lo hace
+     ajustarEncuadre en main.js) en vez de quedarse tapado. */
   @media (max-width: 900px) {
-    header { left: 14px; top: 12px; }
-    /* No caben lado a lado, así que los dos botones dejan de aparecer solo
-       cuando su panel está cerrado y pasan a ser una barra fija abajo: los dos
-       siempre visibles, y el panel abierto se apoya encima de ellos. Es la
-       misma idea de una barra de pestañas, y evita que el botón del panel
-       cerrado caiga sobre los controles del abierto. */
+    header {
+      left: 12px; top: 8px;
+      /* deja libre la esquina del idioma: si no, «países y territorios» se
+         mete por debajo de los botones ES/EN/FR */
+      right: 128px; pointer-events: none;
+    }
+    .lang { top: 8px; right: 10px; }
+    .crumb { flex-wrap: wrap; row-gap: 4px; font-size: 12px; margin-top: 6px; }
+    .crumb button { padding: 3px 8px; font-size: 12px; }
+
+    /* los dos botones, en una barra bajo la cabecera; siempre visibles */
     .restore[hidden] { display: block; }
-    /* el de escritorio ancla el botón arriba con un selector de ID, que gana
-       sobre .restore: hay que soltar ese top aquí también */
-    .restore { bottom: 10px; }
-    #show-story { left: 10px; top: auto; bottom: 10px; }
+    .restore { top: 78px; bottom: auto; padding: 7px 13px; }
+    /* el de escritorio fija top con un selector de ID, más específico que
+       .restore: hay que repetirlo aquí o los dos botones no se alinean */
+    #show-story { left: 10px; top: 78px; bottom: auto; }
     #show-dock { right: 10px; }
     .restore[aria-expanded="true"] {
       background: var(--lagoon-soft); border-color: var(--lagoon);
     }
-    /* el relato se ancla arriba en escritorio: aquí hay que soltar ese top, o
-       con top y bottom a la vez se estiraría de un borde al otro */
+
+    /* el panel abierto cuelga de esa barra */
     .story, .dock, .story.collapsed ~ .dock {
-      left: 10px; right: 10px; width: auto; top: auto; bottom: 58px;
+      left: 10px; right: 10px; width: auto; top: 120px; bottom: auto;
     }
-    .story { max-height: 56vh; }
+    .story { max-height: 52vh; }
+    .dock { max-height: 62vh; overflow-y: auto; }
+    /* al plegarse suben, no bajan: es de donde vienen */
+    .story.collapsed, .dock.collapsed { transform: translateY(calc(-100% - 130px)); }
+
     .syn-badge { display: none; }
-    .north { top: 52px; right: 10px; }
+    .north { top: auto; bottom: 12px; right: 10px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .story, .dock { transition: none; }
