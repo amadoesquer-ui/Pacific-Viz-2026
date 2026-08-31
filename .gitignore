@@ -17,3 +17,7 @@ World_EEZ_v12*/
 *.shp
 *.dbf
 *.shx
+
+# salidas regenerables del cuaderno de análisis
+analysis/salida/
+.ipynb_checkpoints/
