@@ -92,8 +92,14 @@
   /* ------- boton de idioma: arriba a la derecha, a la altura de la marca -------
      Sin bandera: Windows no dibuja los emoji de bandera (regional indicators)
      y saldrian como las dos letras sueltas, peor que no ponerlas. */
-  .lang {
+  /* El «?» y el idioma comparten esquina en una sola caja: los dos son ajustes
+     de la sesion, no del dato, y juntos ocupan un rincon en vez de dos. La caja
+     es la que se posiciona; los hijos van en flujo. */
+  .corner {
     position: fixed; top: 18px; right: 22px; z-index: 7;
+    display: flex; gap: 6px; align-items: stretch;
+  }
+  .lang {
     display: flex; border: 1px solid var(--line);
     background: var(--panel); backdrop-filter: blur(6px);
   }
@@ -105,6 +111,151 @@
   .lang button[aria-pressed="true"] { background: var(--lagoon-soft); color: var(--lagoon); }
   .lang button + button { border-left: 1px solid var(--line); }
   .lang button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
+
+  /* El «?» va pegado al selector de idioma y con su mismo aspecto: los dos son
+     ajustes de la sesion, no del dato, y agrupados ocupan una esquina en vez
+     de dos. Cuadrado para que se lea como icono y no como una letra suelta. */
+  .help {
+    all: unset; cursor: pointer; width: 26px; display: grid; place-items: center;
+    border: 1px solid var(--line); background: var(--panel);
+    backdrop-filter: blur(6px); color: var(--ink-dim);
+    font-family: var(--mono); font-size: 13px; line-height: 1;
+  }
+  .help:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+
+  /* ---------------------------------------------------------- tutorial -----
+     El foco es un agujero en el velo, hecho con una sombra gigante en lugar de
+     recortar una mascara: asi el velo se pinta solo y el hueco siempre encaja
+     con la caja del elemento, aunque cambie de tamano. */
+  .tour {
+    position: fixed; inset: 0; z-index: 40;
+    opacity: 0; transition: opacity .18s ease;
+    /* El velo NO intercepta los gestos: durante el tutorial se puede girar y
+       hacer zoom en el globo mientras se lee el paso. Un tutorial de gestos en
+       el que no se pueden probar los gestos no ensena nada. */
+    pointer-events: none;
+  }
+  .tour.visible { opacity: 1; }
+  .tour-foco {
+    position: fixed; pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(4, 10, 18, .62);
+    outline: 2px solid var(--lagoon); outline-offset: 0;
+    transition: all .22s cubic-bezier(.4, 0, .2, 1);
+  }
+  :root[data-theme="light"] .tour-foco {
+    box-shadow: 0 0 0 9999px rgba(12, 30, 48, .42);
+  }
+  .tour-card {
+    position: fixed; pointer-events: auto; width: min(360px, calc(100vw - 24px));
+    background: var(--panel); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); padding: 16px 16px 12px;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, .34);
+    transition: top .22s cubic-bezier(.4, 0, .2, 1),
+                left .22s cubic-bezier(.4, 0, .2, 1);
+  }
+  .tour-card.centrada {
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 24px));
+  }
+  /* la flecha apunta al elemento enfocado, para que no haya duda de cual es */
+  .tour-card.bajo::before, .tour-card.sobre::before,
+  .tour-card.dcha::before, .tour-card.izda::before {
+    content: ""; position: absolute; border: 7px solid transparent;
+  }
+  .tour-card.bajo::before  { top: -14px; left: 50%; margin-left: -7px;
+                             border-bottom-color: var(--line); }
+  .tour-card.sobre::before { bottom: -14px; left: 50%; margin-left: -7px;
+                             border-top-color: var(--line); }
+  .tour-card.dcha::before  { left: -14px; top: 50%; margin-top: -7px;
+                             border-right-color: var(--line); }
+  .tour-card.izda::before  { right: -14px; top: 50%; margin-top: -7px;
+                             border-left-color: var(--line); }
+
+  .tour-x {
+    all: unset; cursor: pointer; position: absolute; top: 8px; right: 10px;
+    color: var(--ink-dim); font-size: 18px; line-height: 1; padding: 2px 4px;
+  }
+  .tour-x:focus-visible { outline: 1px solid var(--lagoon); }
+  .tour-n {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+    color: var(--ink-dim); text-transform: uppercase; margin-bottom: 4px;
+  }
+  .tour-t { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .tour-b { font-size: 12.5px; line-height: 1.5; color: var(--ink-dim); }
+  .tour-b b { color: var(--ink); font-weight: 600; }
+
+  /* ---- gestos: las dos formas de hacer lo mismo, siempre las dos */
+  .tour-gestos { margin-top: 12px; display: grid; gap: 6px; }
+  .tour-gesto {
+    display: flex; align-items: center; gap: 10px; padding: 7px 9px;
+    border: 1px solid var(--line); opacity: .55;
+  }
+  /* el modo del aparato en el que se esta mirando, resaltado; el otro se queda
+     visible y atenuado, como referencia */
+  .tour-gesto.propio { opacity: 1; border-color: var(--lagoon); background: var(--lagoon-soft); }
+  .tour-gesto-txt { display: grid; gap: 1px; min-width: 0; }
+  .tour-gesto-txt b {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-dim); font-weight: 500;
+  }
+  .tour-gesto.propio .tour-gesto-txt b { color: var(--lagoon); }
+  .tour-gesto-txt span { font-size: 12px; line-height: 1.35; }
+
+  .glifo { width: 62px; height: 26px; flex: none; color: var(--ink); }
+  .glifo .g-cuerpo, .glifo .g-dedo, .glifo .g-rueda, .glifo .g-flecha,
+  .glifo .g-guia, .glifo .g-onda {
+    fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .glifo .g-dedo { fill: var(--lagoon-soft); }
+  .glifo .g-guia { opacity: .3; stroke-dasharray: 3 3; }
+  .glifo .g-flecha { opacity: .75; }
+  .glifo .g-onda { stroke: var(--lagoon); }
+  .glifo .g-boton { stroke: none; }
+  .glifo .g-lat, .glifo .g-lat2 { stroke: var(--lagoon); }
+
+  @keyframes t-mueve  { 0%, 12% { transform: translateX(0) }
+                        62%, 100% { transform: translateX(34px) } }
+  @keyframes t-vaiven { 0%, 100% { transform: translateX(-14px) }
+                        50% { transform: translateX(14px) } }
+  @keyframes t-abre-i { 0%, 100% { transform: translateX(8px) } 55% { transform: translateX(-14px) } }
+  @keyframes t-abre-d { 0%, 100% { transform: translateX(-8px) } 55% { transform: translateX(14px) } }
+  @keyframes t-onda   { 0% { r: 6; opacity: .9 } 70%, 100% { r: 15; opacity: 0 } }
+  @keyframes t-pulsa  { 0%, 100% { opacity: .25 } 20%, 40% { opacity: 1 } }
+  @keyframes t-pulsa2 { 0%, 100% { opacity: .25 } 12%, 22%, 34%, 44% { opacity: 1 } }
+  @keyframes t-scroll { 0%, 100% { transform: translateY(-2px) } 50% { transform: translateY(3px) } }
+
+  .glifo .g-mueve  { animation: t-mueve 2.2s ease-in-out infinite; }
+  .glifo .g-vaiven { animation: t-vaiven 2.6s ease-in-out infinite; }
+  .glifo .g-abre-i { animation: t-abre-i 2.2s ease-in-out infinite; }
+  .glifo .g-abre-d { animation: t-abre-d 2.2s ease-in-out infinite; }
+  .glifo .g-onda   { animation: t-onda 1.8s ease-out infinite; }
+  .glifo .g-onda2  { animation-delay: .28s; }
+  .glifo .g-lat    { animation: t-pulsa 2.2s ease-in-out infinite; }
+  .glifo .g-lat2   { animation: t-pulsa2 2.2s ease-in-out infinite; }
+  .glifo .g-rueda  { animation: t-scroll 1.6s ease-in-out infinite; }
+
+  /* ---- pie */
+  .tour-pies {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 14px;
+  }
+  .tour-puntos { display: flex; gap: 4px; }
+  .tour-puntos i {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--line);
+  }
+  .tour-puntos i[data-hecho] { background: var(--ink-dim); }
+  .tour-puntos i.on { background: var(--lagoon); width: 14px; border-radius: 3px; }
+  .tour-btns { display: flex; gap: 6px; }
+  .tour-btns button {
+    all: unset; cursor: pointer; padding: 6px 12px; font-size: 12px;
+    border: 1px solid var(--line); color: var(--ink-dim);
+  }
+  .tour-btns button.primary {
+    border-color: var(--lagoon); color: var(--lagoon); background: var(--lagoon-soft);
+  }
+  .tour-btns button[disabled] { opacity: .35; cursor: default; }
+  .tour-btns button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   /* ------- panel de historia: abajo a la izquierda, junto al de datos -------
      Los dos paneles se apoyan en el mismo borde inferior y dejan libre todo el
@@ -384,11 +535,12 @@
   @media (max-width: 900px) {
     header {
       left: 12px; top: 8px;
-      /* deja libre la esquina del idioma: si no, «países y territorios» se
-         mete por debajo de los botones ES/EN/FR */
-      right: 128px; pointer-events: none;
+      /* deja libre la esquina de ajustes: si no, «países y territorios» se
+         mete por debajo de los botones. Son los tres de idioma (~98px) mas el
+         «?» y su hueco (~32px), mas el margen derecho. */
+      right: 152px; pointer-events: none;
     }
-    .lang { top: 8px; right: 10px; }
+    .corner { top: 8px; right: 10px; }
     .crumb { flex-wrap: wrap; row-gap: 4px; font-size: 12px; margin-top: 6px; }
     .crumb button { padding: 3px 8px; font-size: 12px; }
 
@@ -442,7 +594,10 @@
 
 <!-- idioma: arriba a la derecha, a la altura de la marca. Los botones los
      genera main.js desde LANGS para que no se desincronicen del diccionario -->
-<div class="lang" id="lang" role="group" aria-label="Idioma"></div>
+<div class="corner">
+  <button class="help" id="tour-btn" data-i18n-label="tour_btn">?</button>
+  <div class="lang" id="lang" role="group" aria-label="Idioma"></div>
+</div>
 
 <button class="north" id="north-btn" data-i18n-title="title_north" data-i18n="btn_north"
         title="Poner los meridianos verticales">&#8853; alinear norte</button>

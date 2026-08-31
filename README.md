@@ -103,24 +103,43 @@ La descarga de Marine Regions son 354 MB y está excluida del repo
 
 ## Interacción
 
-| Acción | Efecto |
+El botón **?** de la esquina superior derecha abre un tutorial guiado de 12
+pasos que recorre todo lo que hay en esta tabla. Sale solo en la primera
+visita (`localStorage: ps.tour.v1`) y muestra **siempre los dos modos de
+gesto**, ratón y dedo, con el del aparato resaltado: el tablero se enseña en
+proyector y se usa en el móvil, y esconder la mitad de los gestos según dónde
+se abra lo convertiría en una trampa. `npm run smoke:tour[:movil]`.
+
+### Gestos sobre el globo
+
+| Ratón | Dedo | Efecto |
+|---|---|---|
+| Arrastrar | Arrastrar con un dedo | girar el globo sobre su centro; el punto que agarras se queda bajo el puntero |
+| Rueda | Pellizcar | acercar / alejar, **anclado** al puntero o al punto medio entre los dedos |
+| Arrastrar con la rueda pulsada | Arrastrar con dos dedos | desplazar el globo por la pantalla sin girarlo |
+| Clic en un polígono | Toque | seleccionar: levanta la pila y dibuja su serie |
+| Doble clic en una subregión | Doble toque | bajar a sus países (ventana de 500 ms, la del sistema) |
+| Clic fuera / `Esc` | Toque fuera | soltar la selección |
+
+Acercarse tiene un tope geométrico —el limbo se sale del encuadre—, así que
+pasado ese punto el zoom estrecha el campo como un teleobjetivo, que es lo que
+permite ver los estratos **de canto contra el horizonte**.
+
+### Controles
+
+| Elemento | Efecto |
 |---|---|
-| Arrastrar | girar el globo libremente sobre su propio centro |
-| «⊕ alinear norte» (botón) | meridianos verticales en pantalla (eje N-S al «arriba» de la cámara), conservando la longitud que mira a la cámara |
-| Clic central (rueda) / dos dedos | mover el globo (X/Y/Z) |
-| Rueda | acercar y alejar |
-| Clic en un polígono | separar los estratos (la capa base no se mueve) y abrir el panel |
-| Clic fuera / `Esc` | soltar |
-| «Ver países…» (panel) | bajar al nivel país de esa subregión |
-| «← Pacífico» (miga) | volver al nivel subregiones |
-| Slider «Altura» | solo la pila seleccionada; 1× (igual que las demás) – 10×, por defecto 3× |
-| Slider «Separación» | solo la pila seleccionada; hueco entre losas, 0 % (volumen macizo) – 85 % del paso, sin alterar la altura total |
-| Selector «Tema» | claro / oscuro; repinta interfaz y escena 3D y recuerda la preferencia (`localStorage`; por defecto, la del sistema) |
-| Slider «Transparencia» | **todas** las pilas; permite ver los estratos interiores, el mapa y las pilas de detrás |
-| Flechas / puntos «Indicadores» | pasar páginas del carrusel; 13 indicadores de 3 en 3 |
-| Selector «Idioma» | español / inglés / francés; recuerda la preferencia (`localStorage`; por defecto, la del navegador) |
-| Cursor sobre una franja o fila del panel | aísla ese año en la pila: se abre un hueco a ambos lados y se atenúan las demás franjas |
-| (sin selección) | todas las pilas: volúmenes macizos de altura `STACK_T` (grosor de losa completo, `THICK_MIN`) |
+| «⊕ alinear norte» | giro **puro sobre el eje de visión**: endereza el norte hacia arriba sin mover el punto que estás mirando |
+| Cinta «Indicadores» | 13 indicadores; recolorea los estratos y redibuja la gráfica |
+| Gráfica: señalar un año | resalta ese estrato en el globo |
+| Gráfica: clic en un año | **fija** el año; el resaltado sobrevive al puntero y al cierre del panel. Otro clic lo suelta |
+| «Ver países de la subregión →» | bajar al nivel país |
+| «Regresar a la subregión» / «← Pacífico» | volver al nivel subregiones |
+| Slider «Altura» | solo la pila seleccionada; 1× (plana, como las demás) – 10×, por defecto **5×** |
+| Slider «Transparencia» | **todas** las pilas; deja ver los estratos interiores, el mapa y las pilas de detrás |
+| Selector «Tema» | claro / oscuro; repinta interfaz y escena 3D y recuerda la preferencia (`localStorage`). Por defecto **claro** |
+| Selector «Idioma» | inglés / francés / español; recuerda la preferencia (`localStorage`). Por defecto **inglés**, o el del navegador si coincide |
+| (sin selección) | solo se dibuja el estrato más reciente **con dato**, a ras del globo: un mapa plano normal |
 
 ## Decisiones y límites del prototipo
 

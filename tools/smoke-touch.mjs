@@ -34,6 +34,14 @@ const port = await new Promise(k => srv.listen(0, () => k(srv.address().port)));
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ ...devices["Pixel 7"], colorScheme: "dark" });
+// Estas pruebas miden el TABLERO, no el tutorial, así que arrancan como un
+// usuario que ya lo ha visto. Sin esto el tutorial se abre solo en la primera
+// visita y su tarjeta se come los toques dirigidos al globo: el toque simple
+// dejaba de seleccionar y el doble toque no bajaba de nivel.
+await ctx.addInitScript(() => {
+  try { localStorage.setItem("ps.tour.v1", "hecho"); } catch { /* modo privado */ }
+});
+
 const page = await ctx.newPage();
 await page.goto(`http://localhost:${port}/`, { waitUntil: "commit" });
 await page.waitForFunction(() => !!window.__ps, null, { timeout: 30000 });

@@ -65,6 +65,14 @@ const page = await browser.newPage({
   reducedMotion: arg("--reducido") ? "reduce" : "no-preference",
 });
 
+// Estas pruebas miden el TABLERO, no el tutorial, así que arrancan como un
+// usuario que ya lo ha visto. Sin esto el tutorial se abre solo en la primera
+// visita y su tarjeta se come los toques dirigidos al globo: el toque simple
+// dejaba de seleccionar y el doble toque no bajaba de nivel.
+await page.addInitScript(() => {
+  try { localStorage.setItem("ps.tour.v1", "hecho"); } catch { /* modo privado */ }
+});
+
 const errores = [];
 page.on("pageerror", e => errores.push(`pageerror: ${e.message}`));
 page.on("console", m => m.type() === "error" && errores.push(`console: ${m.text()}`));

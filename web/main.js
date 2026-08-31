@@ -10,6 +10,7 @@ import * as THREE from "three";
 import ConicPolygonGeometry from "three-conic-polygon-geometry";
 // `lang` es un binding vivo del módulo: setLang lo reasigna y aquí se ve
 import { t, setLang, initialLang, LANGS, lang } from "./i18n.js";
+import { iniciarTour, tourPendiente } from "./tour.js";
 
 // ------------------------------------------------------------------ config
 const R = 100;                       // radio del globo
@@ -1721,6 +1722,62 @@ paneles.story(true);
 paneles.dock(true);
 applyLang(initialLang());     // ya llama a recolor(), que pinta leyenda y gráfica
 requestAnimationFrame(animate);
+
+// ------------------------------------------------------------------ tutorial
+// El tutorial necesita dejar el tablero en el estado en el que cada paso tiene
+// sentido —no se puede explicar la gráfica con la gráfica vacía—, así que se
+// le pasa una API en vez de dejarlo hurgar en el DOM. Aquí está el único sitio
+// que sabe cómo se abre un panel o cómo se selecciona una unidad, y así sigue.
+const apiTour = {
+  abrirPanel(id, pestaña) {
+    // en estrecho los dos paneles comparten sitio: abrir uno cierra el otro
+    if (ESTRECHO()) paneles[id === "story" ? "dock" : "story"](true);
+    paneles[id](false);
+    if (pestaña) openTab(pestaña);
+  },
+  cerrarPaneles() { paneles.story(true); paneles.dock(true); },
+  seleccionar(u) { select(u); },
+
+  // Una unidad concreta da igual cuál sea mientras TENGA datos: si el ejemplo
+  // cae en una serie vacía, el paso de la gráfica enseñaría el cartel de «sin
+  // datos», que es justo lo contrario de lo que quiere explicar.
+  seleccionarEjemplo(nivel) {
+    if (state.selected && state.selected.level === nivel) return;
+    const cand = units[nivel] ?? [];
+    const tieneDatos = u =>
+      dataset.values[u.id]?.[state.indicator]?.some(v => v !== null);
+    const bueno = cand.find(tieneDatos) ?? cand[0];
+    if (bueno) select(bueno);
+  },
+
+  instantanea: () => ({
+    sel: state.selected, nivel: state.level, indicador: state.indicator,
+    story: document.getElementById("story").classList.contains("collapsed"),
+    dock: document.getElementById("dock").classList.contains("collapsed"),
+    pestaña: document.getElementById("tab-ctrl").getAttribute("aria-selected") === "true"
+      ? "tab-ctrl" : "tab-data",
+  }),
+
+  // El tutorial es una visita, no una mudanza: todo lo que movió vuelve a su
+  // sitio. Si al abrirlo el usuario tenía Fiyi seleccionado y el panel de
+  // controles abierto, eso es lo que se encuentra al cerrarlo.
+  restaurar(s) {
+    if (!s) return;
+    if (s.nivel === "region" && state.level === "country") exitRegion();
+    select(s.sel);
+    openTab(s.pestaña);
+    paneles.story(s.story);
+    paneles.dock(s.dock);
+  },
+};
+
+document.getElementById("tour-btn")
+  .addEventListener("click", () => iniciarTour(apiTour));
+
+// Solo la primera visita, y con un respiro: arrancarlo en el mismo cuadro en
+// que aparece el globo pisaría la animación de extrusión inicial, que es lo
+// primero que hay que ver.
+if (tourPendiente()) setTimeout(() => iniciarTour(apiTour), 900);
 
 // hook de depuración (consola / pruebas automatizadas)
 window.__ps = {

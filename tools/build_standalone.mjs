@@ -112,11 +112,15 @@ const BOOTSTRAP = `
   const three = blob(txt("src-three"));
   const conic = blob(txt("src-conic")
     .replace(/(from\\s*)(["'])three\\2/g, \`$1"\${three}"\`));
-  // módulo propio: el import relativo de main.js no resolvería desde una blob
-  // URL (su base es blob:), así que también se sustituye por su blob
+  // módulos propios: el import relativo de main.js no resolvería desde una
+  // blob URL (su base es blob:), así que también se sustituyen por sus blobs.
+  // tour.js importa i18n.js, así que se construye DESPUÉS de tener su blob.
   const i18n = blob(txt("src-i18n"));
+  const tour = blob(txt("src-tour")
+    .replace(/(from\\s*)(["'])\\.\\/i18n\\.js\\2/g, \`$1"\${i18n}"\`));
   await import(blob(txt("src-main")
     .replace(/(from\\s*)(["'])\\.\\/i18n\\.js\\2/g, \`$1"\${i18n}"\`)
+    .replace(/(from\\s*)(["'])\\.\\/tour\\.js\\2/g, \`$1"\${tour}"\`)
     .replace(/(from\\s*)(["'])three-conic-polygon-geometry\\2/g, \`$1"\${conic}"\`)
     .replace(/(from\\s*)(["'])three\\2/g, \`$1"\${three}"\`)));
 })();`;
@@ -124,10 +128,11 @@ const BOOTSTRAP = `
 // ------------------------------------------------------------------ build
 console.log("Pacific Strata → HTML autocontenido\n");
 
-const [html, main, i18n, three, conic, fontCss] = await Promise.all([
+const [html, main, i18n, tour, three, conic, fontCss] = await Promise.all([
   readFile(join(WEB, "index.html"), "utf8"),
   readFile(join(WEB, "main.js"), "utf8"),
   readFile(join(WEB, "i18n.js"), "utf8"),
+  readFile(join(WEB, "tour.js"), "utf8"),
   grab(THREE_URL, "three.module.js"),
   grab(CONIC_URL, "conic.bundle.mjs"),
   inlineFonts(),
@@ -140,9 +145,10 @@ console.log(`  conic        ${kb(conic.length)}`);
 console.log(`  datos        ${kb(Object.values(datos).reduce((a, s) => a + s.length, 0))}`);
 console.log(`  main.js      ${kb(main.length)}`);
 console.log(`  i18n.js      ${kb(i18n.length)}`);
+console.log(`  tour.js      ${kb(tour.length)}`);
 
 // ningún archivo contiene "</script"; se comprueba por si cambian las versiones
-for (const [nombre, src] of [["three.js", three], ["conic", conic], ["main.js", main], ["i18n.js", i18n],
+for (const [nombre, src] of [["three.js", three], ["conic", conic], ["main.js", main], ["i18n.js", i18n], ["tour.js", tour],
                              ...Object.entries(datos)]) {
   if (/<\/script/i.test(src)) throw new Error(
     `${nombre} contiene "</script": habría que escaparlo o pasar a base64`);
@@ -159,6 +165,7 @@ const incrustado = [
   tag("src-three", "text/plain", three),
   tag("src-conic", "text/plain", conic),
   tag("src-i18n", "text/plain", i18n),
+  tag("src-tour", "text/plain", tour),
   tag("src-main", "text/plain", main),
   `<script>${BOOTSTRAP}\n</script>`,
 ].join("\n");
