@@ -25,7 +25,15 @@ const SEP_MAX_FRAC = 0.85;
 const CURV = { region: 2.0, country: 3.5 }; // resolución de curvatura (°)
 const VIEW = { lat: -14, lon: 187, dist: 305, tiltLat: -46 }; // cámara inicial
 
+// Con «reducir movimiento» activado NO se suprime la animación de la pila: se
+// acorta. Aquí la extrusión no es adorno, es la codificación del dato —lo que
+// dice cuánto mide cada año—, y quitarla dejaba la aplicación pareciendo rota.
+// WCAG 2.3.3 exime justamente al movimiento esencial. Android enciende esa
+// preferencia solo con el ahorro de batería, así que muchos la tienen puesta
+// sin saberlo. Lo que sí se respeta es la intención: nada de recorridos largos.
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const LERP_PILA = REDUCED ? 0.40 : 0.14;   // fracción por cuadro
+const DUR_TRAZO = REDUCED ? 220 : 700;     // ms del trazado de la gráfica
 
 // Dos rampas, porque los 13 indicadores no son del mismo tipo:
 //   · DIVERGENTE (RdBu invertida, estilo climate stripes) para los que se leen
@@ -564,7 +572,7 @@ function animate(now) {
         let escala = 0;
         for (const m of s.meshes) {
           const cur = m.scale.x;
-          const next = REDUCED ? target : lerp(cur, target, 0.14);
+          const next = lerp(cur, target, LERP_PILA);
           escala = Math.abs(next - target) < 1e-4 ? target : next;
           m.scale.setScalar(escala);
           m.material.emissive.setHex(lit ? HOVER_EMISSIVE : 0x000000);
@@ -743,7 +751,6 @@ document.getElementById("north-btn").addEventListener("click", () => {
     v, up, new THREE.Vector3().crossVectors(v, up));
   northTarget = new THREE.Quaternion()
     .setFromRotationMatrix(mView.multiply(mLocal.transpose()));
-  if (REDUCED) { globe.quaternion.copy(northTarget); northTarget = null; }
 });
 
 canvas.addEventListener("pointerdown", e => {
@@ -900,19 +907,42 @@ for (const tab of Object.keys(panes))
 // -------- colapsar los paneles para dejar el globo limpio. El botón de
 // cerrar vive dentro del panel, donde se espera encontrarlo, así que se va con
 // él; el de restaurar vive fuera y solo aparece cuando hace falta.
+// En pantalla estrecha los dos paneles ocupan el mismo sitio —ancho completo,
+// pegados abajo—, así que abrir uno cierra el otro. En pantalla ancha caben
+// lado a lado y son independientes. El umbral es el mismo de la media query.
+const ESTRECHO = () => matchMedia("(max-width: 900px)").matches;
+const paneles = {};
+
 for (const [panelId, ocultar, mostrar] of
      [["story", "hide-story", "show-story"], ["dock", "hide-dock", "show-dock"]]) {
   const el = document.getElementById(panelId);
-  const btnOcultar = document.getElementById(ocultar);
   const btnMostrar = document.getElementById(mostrar);
   const set = colapsado => {
     el.classList.toggle("collapsed", colapsado);
-    btnMostrar.hidden = !colapsado;
+    btnMostrar.hidden = !colapsado;          // en estrecho el CSS lo mantiene
+    btnMostrar.setAttribute("aria-expanded", !colapsado);
     // el SVG se dibuja al ancho que tenga: al volver, hay que rehacerlo
     if (!colapsado && panelId === "dock") drawChart();
   };
-  btnOcultar.addEventListener("click", () => set(true));
-  btnMostrar.addEventListener("click", () => set(false));
+  paneles[panelId] = set;
+  document.getElementById(ocultar).addEventListener("click", () => set(true));
+  // En estrecho los dos botones están siempre a la vista, así que el suyo
+  // también tiene que servir para cerrar: si no, quedaría muerto al abrirse.
+  btnMostrar.addEventListener("click", () => {
+    if (!el.classList.contains("collapsed")) return set(true);
+    if (ESTRECHO()) paneles[panelId === "story" ? "dock" : "story"](true);
+    set(false);
+  });
+}
+
+// Al arrancar en estrecho se deja solo el de datos: es el que responde al
+// globo. Y si se pasa a estrecho redimensionando, se resuelve el solape.
+function ajustarPaneles() {
+  if (!ESTRECHO()) return;
+  const story = document.getElementById("story");
+  const dock = document.getElementById("dock");
+  if (!story.classList.contains("collapsed") && !dock.classList.contains("collapsed"))
+    paneles.story(true);
 }
 
 // -------- relato por pasos: un párrafo a la vez, con Anterior / Siguiente.
@@ -1089,13 +1119,9 @@ function drawChart() {
 function animarTrazo(linea) {
   const total = linea.getTotalLength();
   const puntos = chartPts;
-  if (REDUCED) {
-    for (const p of puntos) p.dot?.setAttribute("opacity", 1);
-    return;
-  }
   linea.style.strokeDasharray = total;
   linea.style.strokeDashoffset = total;
-  const DUR = 700;
+  const DUR = DUR_TRAZO;
   const t0 = performance.now();
   (function paso(now) {
     const k = Math.min(1, (now - t0) / DUR);
@@ -1262,6 +1288,7 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  ajustarPaneles();    // al estrechar, los dos paneles pasan a competir por el sitio
   drawChart();         // el SVG se dibuja al ancho del panel, que cambio
 }
 addEventListener("resize", resize);

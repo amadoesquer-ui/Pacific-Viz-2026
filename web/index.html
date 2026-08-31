@@ -101,12 +101,14 @@
   .lang button + button { border-left: 1px solid var(--line); }
   .lang button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
 
-  /* ------- panel de historia: toda la columna izquierda -------
-     Solo texto y navegacion entre puntos del relato. La altura la fija el
-     viewport y no el contenido, para que la botonera quede siempre abajo. */
+  /* ------- panel de historia: abajo a la izquierda, junto al de datos -------
+     Los dos paneles se apoyan en el mismo borde inferior y dejan libre todo el
+     hemisferio de arriba, que es donde está el globo. La altura la marca el
+     contenido, con un tope para que un paso largo del relato no invada la
+     escena. */
   .story {
-    position: fixed; left: 22px; top: 86px; bottom: 20px; z-index: 6;
-    width: 300px; display: flex; flex-direction: column;
+    position: fixed; left: 22px; bottom: 20px; z-index: 6;
+    width: 300px; max-height: 46vh; display: flex; flex-direction: column;
     padding: 16px 18px; border: 1px solid var(--line);
     background: var(--panel); backdrop-filter: blur(6px);
     transition: transform .3s ease, opacity .3s ease;
@@ -173,52 +175,43 @@
   }
   .toggle:hover { color: var(--lagoon); border-color: var(--lagoon); }
   .toggle:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
+  /* Los de restaurar llevan el nombre del panel y no un símbolo: colapsados
+     son lo único que queda en pantalla, y un ☰ suelto no dice qué va a abrir. */
   .restore {
-    position: fixed; z-index: 7;
+    position: fixed; bottom: 20px; z-index: 7; padding: 9px 16px;
     background: var(--panel); backdrop-filter: blur(6px);
+    font-family: var(--ui); font-size: 12px; font-weight: 500;
+    letter-spacing: .04em; color: var(--lagoon); border-color: var(--lagoon);
   }
+  .restore:hover { background: var(--lagoon-soft); color: var(--lagoon); }
   .restore[hidden] { display: none; }
-  #show-story { left: 22px; top: 86px; }
-  #show-dock { right: 22px; bottom: 20px; }
+  #show-story { left: 22px; }
+  #show-dock { right: 22px; }
 
   /* el de la historia va en su cabecera, en linea con el titulo */
   .story h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
-  /* ------- carrusel de indicadores -------
-     13 indicadores no caben en una fila de botones: se paginan de 3 en 3 en
-     páginas con scroll-snap, con flechas y puntos. Las páginas las genera
-     main.js a partir de INDICATORS, así que el número de puntos no puede
-     desincronizarse del de indicadores. */
-  .carousel-head { display: flex; align-items: center; justify-content: space-between; }
-  .carousel-arrows { display: flex; gap: 4px; }
-  .carousel-arrow {
-    all: unset; cursor: pointer; padding: 2px 7px; line-height: 1;
-    font-size: 11px; color: var(--ink-dim); border: 1px solid var(--line);
+  /* ------- segmentado (tema) -------
+     Comparte borde, alto y tipografía con el cintillo de indicadores y con el
+     selector de idioma: los tres son el mismo gesto —elegir una opción de una
+     lista corta— y deben verse igual. Este bloque sustituye al del carrusel
+     paginado, que el cintillo dejó sin uso y del que solo sobrevivía, por
+     accidente, el estilo de los botones del tema. */
+  .seg {
+    display: flex; border: 1px solid var(--line);
   }
-  .carousel-arrow:hover:not(:disabled) { color: var(--lagoon); border-color: var(--lagoon); }
-  .carousel-arrow:disabled { opacity: .3; cursor: default; }
-  .carousel-arrow:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 1px; }
+  .seg button {
+    all: unset; cursor: pointer; flex: 1; text-align: center;
+    padding: 7px 12px; font-size: 12px; font-weight: 500;
+    color: var(--ink-dim); transition: background .15s, color .15s;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] {
+    background: var(--lagoon-soft); color: var(--lagoon); font-weight: 600;
+  }
+  .seg button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: -1px; }
 
-  .carousel {
-    display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-  }
-  .carousel::-webkit-scrollbar { display: none; }
-  .carousel-page {
-    flex: 0 0 100%; scroll-snap-align: start;
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .carousel-page .seg { flex-direction: column; }
-  .carousel-page .seg button { text-align: left; }
-  .carousel-page .seg button + button { border-top: 1px solid var(--line); }
-
-  .carousel-dots { display: flex; justify-content: center; gap: 5px; margin-top: 8px; }
-  .carousel-dots button {
-    all: unset; cursor: pointer; width: 5px; height: 5px; border-radius: 50%;
-    background: var(--line);
-  }
-  .carousel-dots button[aria-current="true"] { background: var(--lagoon); }
-  .carousel-dots button:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
 
   #lang-select {
     width: 100%; margin-top: 4px; padding: 6px 8px;
@@ -361,9 +354,22 @@
 
   @media (max-width: 900px) {
     header { left: 14px; top: 12px; }
-    .story { display: none; }
-    .dock, .story.collapsed ~ .dock { left: 10px; right: 10px; bottom: 10px; }
-    #show-story { display: none; }
+    /* No caben lado a lado, así que los dos botones dejan de aparecer solo
+       cuando su panel está cerrado y pasan a ser una barra fija abajo: los dos
+       siempre visibles, y el panel abierto se apoya encima de ellos. Es la
+       misma idea de una barra de pestañas, y evita que el botón del panel
+       cerrado caiga sobre los controles del abierto. */
+    .restore[hidden] { display: block; }
+    .restore { bottom: 10px; }
+    #show-story { left: 10px; }
+    #show-dock { right: 10px; }
+    .restore[aria-expanded="true"] {
+      background: var(--lagoon-soft); border-color: var(--lagoon);
+    }
+    .story, .dock, .story.collapsed ~ .dock {
+      left: 10px; right: 10px; width: auto; bottom: 58px;
+    }
+    .story { max-height: 56vh; }
     .syn-badge { display: none; }
     .north { top: 52px; right: 10px; }
   }
@@ -404,7 +410,7 @@
   </nav>
 </aside>
 <button class="toggle restore" id="show-story" aria-controls="story"
-        data-i18n-label="toggle_story" hidden>&#9776;</button>
+        data-i18n="btn_story" data-i18n-title="toggle_story" hidden>Historia</button>
 
 <!-- ------------------------------------- panel inferior: datos y controles -->
 <section class="dock" id="dock" aria-label="Datos y controles">
@@ -479,7 +485,7 @@
   </div>
 </section>
 <button class="toggle restore" id="show-dock" aria-controls="dock"
-        data-i18n-label="toggle_dock" hidden>&#9650;</button>
+        data-i18n="btn_dock" data-i18n-title="toggle_dock" hidden>Datos y controles</button>
 
 <script type="importmap">
 {

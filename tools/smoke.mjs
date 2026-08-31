@@ -3,6 +3,7 @@
  *
  *   node tools/smoke.mjs                 # prueba dist/pacific-strata.html
  *   node tools/smoke.mjs --tema oscuro   # fuerza el tema
+ *   node tools/smoke.mjs --reducido      # simula «reducir movimiento»
  *   node tools/smoke.mjs --web           # prueba web/ (three.js por CDN)
  *
  * Por defecto prueba el HTML autocontenido y no web/: es lo que se entrega, y
@@ -59,6 +60,9 @@ const browser = await chromium.launch();
 const page = await browser.newPage({
   viewport: { width: 1440, height: 900 },
   colorScheme: tema === "oscuro" ? "dark" : tema === "claro" ? "light" : "light",
+  // con «reducir movimiento» la extrusión no debe suprimirse, solo acortarse:
+  // es la codificación del dato, y al suprimirla la aplicación parecía rota
+  reducedMotion: arg("--reducido") ? "reduce" : "no-preference",
 });
 
 const errores = [];
@@ -90,6 +94,22 @@ const estado = await page.evaluate(() => ({
   idioma: document.documentElement.lang,
   tema: document.documentElement.dataset.theme,
 }));
+
+// la pila tiene que CRECER, no aparecer colocada: se muestrea mientras sube
+const escalaTope = () => page.evaluate(() =>
+  +window.__ps.units.region[0].slabs.at(-2).meshes[0].scale.x.toFixed(4));
+const antesDeSubir = await escalaTope();
+await page.evaluate(() => window.__ps.select(window.__ps.units.region[0]));
+const muestras = [];
+for (let i = 0; i < 4; i++) { await page.waitForTimeout(60); muestras.push(await escalaTope()); }
+await page.waitForTimeout(1200);
+const alFinal = await escalaTope();
+const anima = muestras.some((v, i) => i && v > muestras[i - 1]) && muestras[0] < alFinal;
+console.log(`extrusión: ${antesDeSubir} → ${muestras.join(" ")} → ${alFinal}` +
+            (anima ? "  (anima)" : "  ¡SALTA, sin animación!"));
+if (!anima) errores.push("la extrusión no se anima");
+await page.evaluate(() => window.__ps.select(null));
+await page.waitForTimeout(900);
 
 await mkdir(SHOTS, { recursive: true });
 const sufijo = (usaWeb ? "web" : "dist") + "-" + estado.tema;
