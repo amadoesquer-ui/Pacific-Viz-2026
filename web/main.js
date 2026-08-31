@@ -1115,20 +1115,28 @@ function exitRegion() {
 // un vistazo qué indicador hay activo sin tener que pasar páginas.
 const ribbon = document.getElementById("ribbon");
 
+// Cambiar de indicador desde un solo sitio: lo usan el cintillo y el relato,
+// que también lleva a la escena a un indicador concreto. Si cada uno lo hiciera
+// por su cuenta, el botón del cintillo podría quedarse sin marcar.
+function setIndicator(id) {
+  if (!id || state.indicator === id) return;
+  state.indicator = id;
+  for (const x of ribbon.children) {
+    const suyo = x.dataset.ind === id;
+    x.setAttribute("aria-pressed", suyo);
+    // el activo puede quedar fuera de la parte visible del cintillo
+    if (suyo) x.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }
+  recolor();
+}
+
 for (const ind of INDICATORS) {
   const b = document.createElement("button");
   b.dataset.ind = ind.id;              // clave de traducción del nombre
   b.textContent = t(ind.id, null, ind.name);
   b.title = ind.unit;
   b.setAttribute("aria-pressed", ind.id === state.indicator);
-  b.addEventListener("click", () => {
-    if (state.indicator === ind.id) return;
-    state.indicator = ind.id;
-    for (const x of ribbon.children) x.setAttribute("aria-pressed", x === b);
-    // el activo puede quedar fuera de la parte visible del cintillo
-    b.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
-    recolor();
-  });
+  b.addEventListener("click", () => setIndicator(ind.id));
   ribbon.appendChild(b);
 }
 
@@ -1314,27 +1322,72 @@ const storyPrev = document.getElementById("story-prev");
 const storyNext = document.getElementById("story-next");
 let storyStep = 0;
 
-const storySteps = () => {
-  const out = [];
-  for (let n = 1; ; n++) {
-    const k = `story_p${n}`;
-    if (t(k, null, "") === "") break;
-    out.push(k);
+// Cada paso apunta a algo CONCRETO que se puede ir a mirar. El relato no
+// describe el tablero: dice qué buscar y dónde, y el botón deja la escena
+// puesta para buscarlo. Contar un patrón sin poder verlo obliga a creerse la
+// afirmación; dejarlo a un clic la convierte en algo comprobable.
+//
+// Los cinco primeros son hallazgos del cuaderno de análisis
+// (analysis/explorar_datos.ipynb); el último es la metodología, que es largo a
+// propósito y se lee con la barra de desplazamiento del propio panel.
+const RELATO = [
+  { k: "leer",    unidad: "Melanesia", ind: "temp_anomaly" },
+  { k: "nadie",   unidad: "PG",        ind: "temp_anomaly" },
+  { k: "muesca",  unidad: "FJ",        ind: "temp_anomaly", anio: 2015 },
+  { k: "turismo", unidad: "NC",        ind: "tourism" },
+  { k: "huecos",  unidad: "Melanesia", ind: "calci" },
+  { k: "metodo" },
+];
+
+// Deja la escena en el sitio del que habla el paso: indicador, nivel, unidad
+// seleccionada y, si el paso señala un año concreto, ese año fijado.
+function irAlPaso(paso) {
+  if (!paso.unidad) return;
+  setIndicator(paso.ind);
+  const u = unitById[paso.unidad];
+  if (!u) return;
+  // bajar o subir de nivel según dónde viva la unidad; enterRegion deselecciona,
+  // así que la selección va después
+  if (u.level === "country") {
+    if (state.regionId !== u.region) enterRegion(u.region);
+  } else if (state.level === "country") {
+    exitRegion();
   }
-  return out;
-};
+  select(u);
+  state.pinnedYear = paso.anio ? YEARS.indexOf(paso.anio) : null;
+  if (state.pinnedYear === -1) state.pinnedYear = null;
+  marcarAño();
+}
 
 function paintStory() {
-  const pasos = storySteps();
-  storyStep = Math.min(storyStep, pasos.length - 1);
-  storyBody.innerHTML = "";
-  const par = document.createElement("p");
-  par.textContent = t(pasos[storyStep]);
-  storyBody.appendChild(par);
+  storyStep = Math.min(Math.max(storyStep, 0), RELATO.length - 1);
+  const paso = RELATO[storyStep];
+
+  storyBody.innerHTML =
+    `<h3>${t(`story_${paso.k}_t`)}</h3>${t(`story_${paso.k}_b`)}`;
+
+  if (paso.unidad) {
+    const u = unitById[paso.unidad];
+    const ind = INDICATORS.find(i => i.id === paso.ind);
+    const b = document.createElement("button");
+    b.className = "story-go";
+    b.innerHTML = `<span>${t("story_go")}</span>`
+      + `<b>${nameOf(u)} · ${t(ind.id, null, ind.name)}</b>`;
+    // Al enfocarse, el navegador desplaza el cuerpo para enseñar el botón, y
+    // como el botón está al final se llevaba el título fuera de vista justo
+    // cuando el usuario mira qué ha pasado. Se devuelve el desplazamiento.
+    b.addEventListener("click", () => {
+      const y = storyBody.scrollTop;
+      irAlPaso(paso);
+      storyBody.scrollTop = y;
+    });
+    storyBody.appendChild(b);
+  }
+
   storyBody.scrollTop = 0;
-  storyN.textContent = t("story_step", { n: storyStep + 1, total: pasos.length });
+  storyN.textContent = t("story_step", { n: storyStep + 1, total: RELATO.length });
   storyPrev.disabled = storyStep === 0;
-  storyNext.disabled = storyStep === pasos.length - 1;
+  storyNext.disabled = storyStep === RELATO.length - 1;
 }
 
 storyPrev.addEventListener("click", () => { storyStep--; paintStory(); });

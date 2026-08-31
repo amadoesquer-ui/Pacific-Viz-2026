@@ -277,8 +277,30 @@
     font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
     margin-bottom: 14px;
   }
+  /* El cuerpo ya desplaza por su cuenta: el ultimo paso, la metodologia, es
+     largo a proposito y se lee con esta barra sin romper el alto del panel. */
   .story .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-  .story .body p { font-size: 13px; line-height: 1.65; color: var(--ink); }
+  .story .body h3 {
+    font-size: 14px; font-weight: 600; line-height: 1.35; margin-bottom: 8px;
+  }
+  .story .body p { font-size: 13px; line-height: 1.65; color: var(--ink-dim); }
+  .story .body p + p { margin-top: 9px; }
+  .story .body b { color: var(--ink); font-weight: 600; }
+
+  /* Deja la escena puesta en lo que el paso acaba de contar. Va DENTRO del
+     cuerpo desplazable, no en la barra de navegacion, porque pertenece a este
+     paso concreto y no a moverse por el relato. */
+  .story-go {
+    all: unset; cursor: pointer; display: flex; flex-direction: column;
+    gap: 1px; width: 100%; margin-top: 12px; padding: 9px 11px;
+    border: 1px solid var(--lagoon); background: var(--lagoon-soft);
+  }
+  .story-go span {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--lagoon);
+  }
+  .story-go b { font-size: 12.5px; line-height: 1.35; color: var(--ink); }
+  .story-go:focus-visible { outline: 1px solid var(--lagoon); outline-offset: 2px; }
   .story nav {
     display: flex; gap: 8px; margin-top: 14px; padding-top: 14px;
     border-top: 1px solid var(--line);
@@ -605,7 +627,7 @@
 <!-- ------------------------------------------------ panel de historia -->
 <aside class="story" id="story" aria-label="Relato">
   <h2>
-    <span data-i18n="story_title">Metodología y análisis</span>
+    <span data-i18n="story_title">Relato</span>
     <button class="toggle" id="hide-story" data-i18n-label="toggle_story"
             aria-controls="story">&#10005;</button>
   </h2>

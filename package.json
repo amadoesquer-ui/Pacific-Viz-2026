@@ -8,6 +8,7 @@
     "smoke": "node tools/smoke.mjs",
     "build": "node tools/build_standalone.mjs",
     "smoke:touch": "node tools/smoke-touch.mjs",
+    "smoke:story": "node tools/smoke-story.mjs",
     "smoke:tour": "node tools/smoke-tour.mjs",
     "smoke:tour:movil": "node tools/smoke-tour.mjs --movil"
   },
