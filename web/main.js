@@ -855,7 +855,6 @@ canvas.addEventListener("pointermove", e => {
 // la rueda y el pellizco acaban en el mismo sitio, para que los topes de zoom
 // sean los mismos por los dos caminos
 function zoomPor(factor) {
-  zoomManual = true;          // a partir de aquí manda el usuario, no el encuadre
   camera.position.setLength(THREE.MathUtils.clamp(
     camera.position.length() * factor, ZOOM_MIN, ZOOM_MAX));
 }
@@ -1063,12 +1062,9 @@ function ajustarPaneles() {
 // desplazamiento entra en la matriz de proyección, con lo que el rayo del
 // picking y la proyección de las etiquetas se corrigen solos. Moviendo
 // globe.position habría chocado con el desplazamiento manual de dos dedos.
-let distGuardada = null;      // la que había antes de abrir un panel
-let zoomManual = false;       // el usuario tocó la rueda o pellizcó desde entonces
-
 function ajustarEncuadre() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  let bajar = 0, tapadoHasta = 0;
+  let bajar = 0;
   if (ESTRECHO()) {
     for (const id of ["story", "dock"]) {
       const el = document.getElementById(id);
@@ -1079,36 +1075,17 @@ function ajustarEncuadre() {
       // borde negativo y el encuadre no se movía nunca—. La caja de diseño ya
       // es la definitiva desde el primer cuadro.
       const abajo = el.offsetTop + el.offsetHeight;
-      tapadoHasta = Math.max(tapadoHasta, abajo);
       // el centro del hueco libre queda a la mitad de ese borde respecto del
       // centro de la pantalla, así que ese es el desplazamiento
       bajar = Math.max(bajar, abajo / 2);
     }
   }
 
-  if (bajar < 1) {
-    camera.clearViewOffset();
-    // al cerrar se devuelve el acercamiento que había, salvo que se haya
-    // pellizcado con el panel abierto: entonces manda lo que hizo el usuario
-    if (distGuardada !== null && !zoomManual) camera.position.setLength(distGuardada);
-    distGuardada = null;
-    return;
-  }
-
-  camera.setViewOffset(w, h, 0, -bajar, w, h);
-
-  // Desplazar no basta: en un teléfono el globo mide 399 px de radio sobre una
-  // pantalla de 412, o sea que es más ancho que la pantalla, y bajarlo solo
-  // mueve el recorte. Con un panel abierto se aleja lo justo para que quepa en
-  // la franja que queda libre; nunca se acerca, para no deshacer un pellizco.
-  const objetivo = (h - tapadoHasta) * 0.46;         // radio deseado, con aire
-  const necesaria = R * h /
-    (2 * Math.tan(camera.fov * Math.PI / 360) * Math.max(objetivo, 1));
-  const actual = camera.position.length();
-  if (necesaria > actual + 1) {
-    if (distGuardada === null) { distGuardada = actual; zoomManual = false; }
-    camera.position.setLength(Math.min(necesaria, ZOOM_MAX));
-  }
+  // Solo se desplaza: el acercamiento, la inclinación y el giro son del
+  // usuario y no se tocan. Si con su zoom el globo no cabe en la franja libre,
+  // se verá recortado, que es lo que él ha elegido.
+  if (bajar < 1) camera.clearViewOffset();
+  else camera.setViewOffset(w, h, 0, -bajar, w, h);
 }
 
 // -------- relato por pasos: un párrafo a la vez, con Anterior / Siguiente.
