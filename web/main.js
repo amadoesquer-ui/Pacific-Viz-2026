@@ -46,11 +46,15 @@ const rampOf = dom => dom.diverging ? RAMP_DIV : RAMP_SEQ;
 const THEMES = {
   dark: {
     bg: 0x060d18, ocean: 0x0e2036, land: 0x3a5a78, noData: 0x2b3a4a,
+    outline: 0xffffff, outlineOpacity: 0.55,
     grid: 0x7fb4e0, gridOpacity: 0.08,
     ambient: 0xbfd4e6, ambientI: 0.85, sunI: 1.35, fillI: 0.35,
   },
   light: {
     bg: 0xeaf1f7, ocean: 0xc3d8e8, land: 0x87a2ba, noData: 0xb9c4cf,
+    // en claro, el blanco puro sobre el océano claro no se ve: se sube la
+    // opacidad y se apoya en el contraste contra el relleno del polígono
+    outline: 0xffffff, outlineOpacity: 0.9,
     grid: 0x2f6288, gridOpacity: 0.12,
     ambient: 0xffffff, ambientI: 1.05, sunI: 1.0, fillI: 0.25,
   },
@@ -265,6 +269,44 @@ function asPolys(geometry) {
                                      : geometry.coordinates;
 }
 
+// -------- contorno de la unidad, pegado al globo. Sin él las 22 ZEE vecinas
+// se leen como una sola mancha: comparten frontera exacta —son particiones del
+// mismo mar— y en la vista plana no hay sombra ni hueco que las separe.
+//
+// Los anillos vienen en lon/lat con tramos largos y rectos (las ZEE están
+// simplificadas), y una recta en lon/lat no es una recta sobre la esfera: se
+// densifican para que el contorno se pegue a la superficie en vez de cortar
+// por dentro.
+const OUTLINE_R = R + 0.5;         // justo por encima de la textura del mapa
+const OUTLINE_STEP = 1.5;          // grados por tramo al densificar
+
+function outlineOf(feature, mat) {
+  const g = new THREE.Group();
+  for (const poly of asPolys(feature.geometry)) {
+    for (const ring of poly) {
+      const pts = [];
+      for (let i = 0; i < ring.length; i++) {
+        const [lon0, lat0] = ring[i];
+        const [lon1, lat1] = ring[(i + 1) % ring.length];
+        const n = Math.max(1, Math.ceil(
+          Math.hypot(lon1 - lon0, lat1 - lat0) / OUTLINE_STEP));
+        for (let k = 0; k < n; k++) {
+          const f = k / n;
+          pts.push(polar2Cartesian(lat0 + (lat1 - lat0) * f,
+                                   lon0 + (lon1 - lon0) * f, OUTLINE_R));
+        }
+      }
+      pts.push(pts[0]);
+      g.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pts), mat));
+    }
+  }
+  return g;
+}
+
+const outlineMat = new THREE.LineBasicMaterial(
+  { color: theme.outline, transparent: true, opacity: theme.outlineOpacity });
+
 // ------------------------------------------------------------------ pilas
 function buildUnits(fc, level) {
   const slabT = STACK_T / YEARS.length;
@@ -272,7 +314,11 @@ function buildUnits(fc, level) {
     const { id, name, region } = f.properties;
     const group = new THREE.Group();
     group.visible = level === "region";
-    const unit = { id, name, region, level, group, slabs: [] };
+    // flatIndex: qué estrato representa a la unidad en la vista plana. Lo
+    // recalcula recolor() por indicador; el último año sirve de arranque para
+    // las unidades que .STAT no cubre y que recolor() se salta.
+    const unit = { id, name, region, level, group, slabs: [],
+                   flatIndex: YEARS.length - 1 };
 
     YEARS.forEach((year, i) => {
       const r0 = R + BASE_ALT + i * slabT;
@@ -297,6 +343,8 @@ function buildUnits(fc, level) {
       }
       unit.slabs.push({ year, yearIndex: i, meshes: slabMeshes, r0 });
     });
+
+    group.add(outlineOf(f, outlineMat));
 
     units[level].push(unit);
     unitById[id] = unit;
@@ -391,6 +439,10 @@ function recolor() {
     for (const u of units[level]) {
       const series = dataset.values[u.id]?.[state.indicator];
       if (!series) continue;           // .STAT no cubre todos los indicadores
+      // El estrato que representa a la unidad en la vista plana es el último
+      // AÑO CON DATO, no el último año: 2026 casi no tiene cobertura y el mapa
+      // habría salido gris entero.
+      u.flatIndex = series.reduce((best, v, i) => v === null ? best : i, 0);
       const dim = state.selected && state.selected !== u;
       u.slabs.forEach((s, i) => {
         const c = colorFor(series[i], dom);
@@ -452,7 +504,17 @@ function animate(now) {
       const h = isSel ? state.hoveredYear : null;
       for (const s of u.slabs) {
         const i = s.yearIndex;
-        const target = (s.r0 + i * gap + padFor(i, h)) / s.r0;
+        // Sin seleccionar, la unidad se lee como un mapa plano: se muestra un
+        // solo estrato —el más reciente CON dato— bajado a ras del globo. La
+        // pila entera solo aparece al seleccionar. Antes se dibujaban las 24
+        // losas siempre, y 22 ZEE vecinas apiladas eran una única masa.
+        const plano = !isSel;
+        const visible = isSel || i === u.flatIndex;
+        for (const m of s.meshes) m.visible = visible;
+        if (!visible) continue;
+        const target = plano
+          ? R / s.r0                       // a ras: el escalado lo baja
+          : (s.r0 + i * gap + padFor(i, h)) / s.r0;
         const lit = h === i;
         for (const m of s.meshes) {
           const cur = m.scale.x;
@@ -474,7 +536,9 @@ let downAt = null;
 function pickables() {
   const list = [];
   for (const u of units[state.level === "region" ? "region" : "country"]) {
-    if (u.group.visible) list.push(...u.group.children);
+    // solo las losas: el contorno es un Group de líneas y no tiene userData
+    if (u.group.visible)
+      for (const s of u.slabs) list.push(...s.meshes);
   }
   return list;
 }
@@ -948,6 +1012,8 @@ function applyTheme(name) {
   recolor();                         // el gris de «sin dato» es del tema
   gridMat.color.setHex(theme.grid);
   gridMat.opacity = theme.gridOpacity;
+  outlineMat.color.setHex(theme.outline);
+  outlineMat.opacity = theme.outlineOpacity;
   ambient.color.setHex(theme.ambient);
   ambient.intensity = theme.ambientI;
   sun.intensity = theme.sunI;
