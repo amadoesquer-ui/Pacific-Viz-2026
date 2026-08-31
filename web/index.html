@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pacific Strata — prototipo</title>
+<title>Pacific Data Strata — prototipo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -73,7 +73,40 @@
     font-weight: 800; letter-spacing: 0.34em; font-size: 13px;
     text-transform: uppercase; color: var(--ink);
   }
-  .wordmark span { color: var(--lagoon); }
+  /* DATA STRATA lleva una letra por estrato. Los colores NO son decorativos:
+     son el perfil real de Micronesia en anomalia de temperatura marina,
+     muestreado de 2003 a 2024 con la misma rampa divergente que pinta el
+     globo. El titulo es una columna del tablero puesta de lado: naranja
+     abajo, rojo oscuro arriba y los dos anos frios de enmedio (2008 y 2010)
+     rompiendo la serie. Si cambia la rampa, estos valores hay que rehacerlos.
+
+     Anadir un estrato nuevo aqui no vale: hay diez letras y diez muestras. */
+  .strata i { font-style: normal; }
+  .strata i:nth-child(1)  { color: #e58368; }   /* 2003  +0.41 */
+  .strata i:nth-child(2)  { color: #f2a17f; }   /* 2006  +0.29 */
+  .strata i:nth-child(3)  { color: #f6dcd1; }   /* 2008  +0.09  el mas frio */
+  .strata i:nth-child(4)  { color: #f5bba2; }   /* 2010  +0.20 */
+  .strata i:nth-child(5)  { color: #e6866a; }   /* 2013  +0.40 */
+  .strata i:nth-child(6)  { color: #e0775e; }   /* 2015  +0.46 */
+  .strata i:nth-child(7)  { color: #ce5046; }   /* 2017  +0.61 */
+  .strata i:nth-child(8)  { color: #cc4b43; }   /* 2019  +0.63 */
+  .strata i:nth-child(9)  { color: #ee9777; }   /* 2022  +0.33 */
+  .strata i:nth-child(10) { color: #b92632; }   /* 2024  +0.77  el mas calido */
+
+  /* Los estratos claros (2008, 2010) casi desaparecen sobre el fondo claro, y
+     los rojos oscuros sobre el oscuro: son colores de DATO, elegidos para
+     leerse contra el oceano y no contra el interfaz, asi que aqui hay que
+     sostenerlos en vez de retocarlos.
+     El halo va en dos capas y no en una: un reborde de 1px que define el trazo
+     de la letra —con 800 de grosor basta para leerla— y un resplandor de 5px
+     que la despega del fondo. Con una sola capa difusa, el estrato de 2008
+     (+0.09 °C, casi blanco) seguia sin verse sobre el tema claro. */
+  .strata i {
+    text-shadow: 0 0 1px rgba(255, 255, 255, .85), 0 0 5px rgba(255, 255, 255, .45);
+  }
+  :root[data-theme="light"] .strata i {
+    text-shadow: 0 0 1px rgba(8, 22, 38, .85), 0 0 5px rgba(8, 22, 38, .40);
+  }
   /* La miga crece a 14 px y su parte pulsable lleva borde y fondo propios: a
      11 px y sin marco parecía una etiqueta y nadie descubría que se podía
      volver por ahí. */
@@ -291,7 +324,14 @@
      cuerpo desplazable, no en la barra de navegacion, porque pertenece a este
      paso concreto y no a moverse por el relato. */
   .story-go {
-    all: unset; cursor: pointer; display: flex; flex-direction: column;
+    /* box-sizing va DESPUES de all: unset y no es decorativo. `all: unset`
+       devuelve todas las propiedades a su valor inicial, y el inicial de
+       box-sizing es content-box, que ademas gana al `*` de arriba por
+       especificidad. Con content-box, width:100% mas 22px de relleno daba
+       286px dentro de una caja de 262: el cuerpo del relato salia con barra
+       horizontal, porque overflow-y:auto obliga al otro eje a ser auto. */
+    all: unset; box-sizing: border-box;
+    cursor: pointer; display: flex; flex-direction: column;
     gap: 1px; width: 100%; margin-top: 12px; padding: 9px 11px;
     border: 1px solid var(--lagoon); background: var(--lagoon-soft);
   }
@@ -610,7 +650,10 @@
 <div id="labels" aria-hidden="true"></div>
 
 <header>
-  <div class="wordmark">Pacific <span>Strata</span></div>
+  <!-- una letra por estrato: los <i> van pegados a proposito, cualquier salto
+       de linea entre ellos metería un espacio dentro de la palabra -->
+  <div class="wordmark" aria-label="Pacific Data Strata">Pacific <span class="strata"
+    ><i>D</i><i>a</i><i>t</i><i>a</i> <i>S</i><i>t</i><i>r</i><i>a</i><i>t</i><i>a</i></span></div>
   <nav class="crumb" id="crumb" aria-label="Nivel de navegación">Pacífico &middot; subregiones</nav>
 </header>
 
